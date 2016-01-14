@@ -364,6 +364,8 @@ WRITE8_MEMBER( spc1500_state::psgb_w)
 	if (m_motor && !BIT(data, 7) && (elapsed_time > 100))
 	{
 		m_cass->change_state((m_cass->get_state() & CASSETTE_MASK_MOTOR) == CASSETTE_MOTOR_DISABLED ? CASSETTE_MOTOR_ENABLED : CASSETTE_MOTOR_DISABLED, CASSETTE_MASK_MOTOR);
+		//if ((m_cass->get_state() & CASSETTE_MASK_MOTOR) == CASSETTE_MOTOR_ENABLED)
+		//	m_cass->set_state(CASSETTE_PLAY);
 		m_timer->reset();
 	}
 	m_motor = BIT(data, 7);
