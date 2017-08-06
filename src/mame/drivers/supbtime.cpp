@@ -23,11 +23,15 @@ down hardware (it doesn't write any good sound data btw, mostly zeros).
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/supbtime.h"
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/h6280/h6280.h"
-#include "sound/2151intf.h"
+#include "sound/ym2151.h"
 #include "sound/okim6295.h"
-#include "includes/supbtime.h"
+#include "screen.h"
+#include "speaker.h"
+
 
 /******************************************************************************/
 
@@ -52,7 +56,7 @@ READ16_MEMBER(supbtime_state::supbtime_controls_r)
 
 WRITE16_MEMBER(supbtime_state::sound_w)
 {
-	soundlatch_byte_w(space, 0, data & 0xff);
+	m_soundlatch->write(space, 0, data & 0xff);
 	m_audiocpu->set_input_line(0, HOLD_LINE);
 }
 
@@ -100,7 +104,7 @@ static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, supbtime_state )
 	AM_RANGE(0x110000, 0x110001) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0x120000, 0x120001) AM_DEVREADWRITE("oki", okim6295_device, read, write)
 	AM_RANGE(0x130000, 0x130001) AM_NOP /* This board only has 1 oki chip */
-	AM_RANGE(0x140000, 0x140001) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x140000, 0x140001) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x1f0000, 0x1f1fff) AM_RAMBANK("bank8")
 	AM_RANGE(0x1fec00, 0x1fec01) AM_DEVWRITE("audiocpu", h6280_device, timer_w)
 	AM_RANGE(0x1ff400, 0x1ff403) AM_DEVWRITE("audiocpu", h6280_device, irq_status_w)
@@ -312,7 +316,7 @@ void supbtime_state::machine_start()
 {
 }
 
-static MACHINE_CONFIG_START( supbtime, supbtime_state )
+static MACHINE_CONFIG_START( supbtime )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 14000000)
@@ -357,17 +361,19 @@ static MACHINE_CONFIG_START( supbtime, supbtime_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_YM2151_ADD("ymsnd", 32220000/9)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 1)) /* IRQ 2 */
 	MCFG_SOUND_ROUTE(0, "mono", 0.45)
 	MCFG_SOUND_ROUTE(1, "mono", 0.45)
 
-	MCFG_OKIM6295_ADD("oki", 1023924, OKIM6295_PIN7_HIGH) // clock frequency & pin 7 not verified
+	MCFG_OKIM6295_ADD("oki", 1023924, PIN7_HIGH) // clock frequency & pin 7 not verified
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.50)
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( chinatwn, supbtime_state )
+static MACHINE_CONFIG_START( chinatwn )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 14000000)
@@ -411,12 +417,14 @@ static MACHINE_CONFIG_START( chinatwn, supbtime_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_YM2151_ADD("ymsnd", 32220000/9)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 1)) /* IRQ 2 */
 	MCFG_SOUND_ROUTE(0, "mono", 0.45)
 	MCFG_SOUND_ROUTE(1, "mono", 0.45)
 
-	MCFG_OKIM6295_ADD("oki", 1023924, OKIM6295_PIN7_HIGH) // clock frequency & pin 7 not verified
+	MCFG_OKIM6295_ADD("oki", 1023924, PIN7_HIGH) // clock frequency & pin 7 not verified
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.50)
 MACHINE_CONFIG_END
 
@@ -501,7 +509,7 @@ ROM_END
 
 /******************************************************************************/
 
-GAME( 1990, supbtime, 0,        supbtime, supbtime, driver_device, 0, ROT0, "Data East Corporation", "Super Burger Time (World, set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, supbtimea,supbtime, supbtime, supbtime, driver_device, 0, ROT0, "Data East Corporation", "Super Burger Time (World, set 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, supbtimej,supbtime, supbtime, supbtime, driver_device, 0, ROT0, "Data East Corporation", "Super Burger Time (Japan)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, chinatwn, 0,        chinatwn, chinatwn, driver_device, 0, ROT0, "Data East Corporation", "China Town (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, supbtime, 0,        supbtime, supbtime, supbtime_state, 0, ROT0, "Data East Corporation", "Super Burger Time (World, set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, supbtimea,supbtime, supbtime, supbtime, supbtime_state, 0, ROT0, "Data East Corporation", "Super Burger Time (World, set 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, supbtimej,supbtime, supbtime, supbtime, supbtime_state, 0, ROT0, "Data East Corporation", "Super Burger Time (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, chinatwn, 0,        chinatwn, chinatwn, supbtime_state, 0, ROT0, "Data East Corporation", "China Town (Japan)", MACHINE_SUPPORTS_SAVE )

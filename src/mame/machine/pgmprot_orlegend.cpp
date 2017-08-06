@@ -14,6 +14,7 @@
 
 #include "emu.h"
 #include "includes/pgm.h"
+#include "machine/pgmprot_orlegend.h"
 
 void pgm_asic3_state::asic3_compute_hold(int y, int z)
 {
@@ -219,6 +220,6 @@ INPUT_PORTS_START( orlegendk )
 INPUT_PORTS_END
 
 
-MACHINE_CONFIG_START( pgm_asic3, pgm_asic3_state )
+MACHINE_CONFIG_START( pgm_asic3 )
 	MCFG_FRAGMENT_ADD(pgmbase)
 MACHINE_CONFIG_END

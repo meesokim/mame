@@ -24,8 +24,10 @@
 
 ***************************************************************************/
 
+#include "emu.h"
 #include "includes/bw2.h"
 #include "bus/rs232/rs232.h"
+#include "screen.h"
 #include "softlist.h"
 
 
@@ -61,7 +63,7 @@ READ8_MEMBER( bw2_state::read )
 {
 	int rom = 1, vram = 1, ram1 = 1, ram2 = 1, ram3 = 1, ram4 = 1, ram5 = 1, ram6 = 1;
 
-	UINT8 data = 0xff;
+	uint8_t data = 0xff;
 
 	switch (m_bank)
 	{
@@ -220,7 +222,7 @@ static ADDRESS_MAP_START( bw2_io, AS_IO, 8, bw2_state )
 	AM_RANGE(0x40, 0x40) AM_DEVREADWRITE(I8251_TAG, i8251_device, data_r, data_w)
 	AM_RANGE(0x41, 0x41) AM_DEVREADWRITE(I8251_TAG, i8251_device, status_r, control_w)
 	AM_RANGE(0x50, 0x50) AM_DEVWRITE("cent_data_out", output_latch_device, write)
-	AM_RANGE(0x60, 0x63) AM_DEVREADWRITE(WD2797_TAG, wd2797_t, read, write)
+	AM_RANGE(0x60, 0x63) AM_DEVREADWRITE(WD2797_TAG, wd2797_device, read, write)
 	AM_RANGE(0x70, 0x7f) AM_DEVREADWRITE(BW2_EXPANSION_SLOT_TAG, bw2_expansion_slot_device, modsel_r, modsel_w)
 ADDRESS_MAP_END
 
@@ -229,7 +231,7 @@ ADDRESS_MAP_END
 //  ADDRESS_MAP( lcdc_map )
 //-------------------------------------------------
 
-static ADDRESS_MAP_START( lcdc_map, AS_0, 8, bw2_state )
+static ADDRESS_MAP_START( lcdc_map, 0, 8, bw2_state )
 	ADDRESS_MAP_GLOBAL_MASK(0x3fff)
 	AM_RANGE(0x0000, 0x3fff) AM_RAM AM_SHARE("videoram")
 ADDRESS_MAP_END
@@ -441,20 +443,11 @@ READ8_MEMBER( bw2_state::ppi_pb_r )
 
 	*/
 
-	UINT8 data = 0xff;
+	uint8_t data = 0xff;
 
-	switch (m_kb)
+	if (m_kb < 10)
 	{
-	case 0: data = m_y0->read(); break;
-	case 1: data = m_y1->read(); break;
-	case 2: data = m_y2->read(); break;
-	case 3: data = m_y3->read(); break;
-	case 4: data = m_y4->read(); break;
-	case 5: data = m_y5->read(); break;
-	case 6: data = m_y6->read(); break;
-	case 7: data = m_y7->read(); break;
-	case 8: data = m_y8->read(); break;
-	case 9: data = m_y9->read(); break;
+		data = m_y[m_kb]->read();
 	}
 
 	return data;
@@ -485,7 +478,7 @@ READ8_MEMBER( bw2_state::ppi_pc_r )
 
 	*/
 
-	UINT8 data = 0;
+	uint8_t data = 0;
 
 	// centronics busy
 	data |= m_centronics_busy << 4;
@@ -582,7 +575,7 @@ void bw2_state::machine_start()
 //  MACHINE_CONFIG( bw2 )
 //-------------------------------------------------
 
-static MACHINE_CONFIG_START( bw2, bw2_state )
+static MACHINE_CONFIG_START( bw2 )
 	// basic machine hardware
 	MCFG_CPU_ADD(Z80_TAG, Z80, XTAL_16MHz/4)
 	MCFG_CPU_PROGRAM_MAP(bw2_mem)
@@ -615,7 +608,7 @@ static MACHINE_CONFIG_START( bw2, bw2_state )
 	MCFG_I8255_OUT_PORTC_CB(WRITE8(bw2_state, ppi_pc_w))
 
 	MCFG_DEVICE_ADD(MSM6255_TAG, MSM6255, XTAL_16MHz)
-	MCFG_DEVICE_ADDRESS_MAP(AS_0, lcdc_map)
+	MCFG_DEVICE_ADDRESS_MAP(0, lcdc_map)
 	MCFG_VIDEO_SET_SCREEN(SCREEN_TAG)
 
 	MCFG_CENTRONICS_ADD(CENTRONICS_TAG, centronics_devices, "printer")
@@ -674,5 +667,5 @@ ROM_END
 //  SYSTEM DRIVERS
 //**************************************************************************
 
-//    YEAR  NAME    PARENT  COMPAT  MACHINE     INPUT   INIT                        COMPANY             FULLNAME            FLAGS
-COMP( 1985, bw2,    0,      0,      bw2,        bw2,    driver_device,      0,      "Bondwell Holding", "Bondwell Model 2", MACHINE_NO_SOUND_HW )
+//    YEAR  NAME    PARENT  COMPAT  MACHINE     INPUT   STATE       INIT    COMPANY             FULLNAME            FLAGS
+COMP( 1985, bw2,    0,      0,      bw2,        bw2,    bw2_state,  0,      "Bondwell Holding", "Bondwell Model 2", MACHINE_NO_SOUND_HW )

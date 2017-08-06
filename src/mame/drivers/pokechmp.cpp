@@ -33,7 +33,7 @@ ROM 11 = Main CPU code?
 -Sound = Yamaha YM2203C + Y3014B
 
 -Also, there are some GALs on the board (not dumped) a
- 8-dips bank and two oscilators (4 MHz and 24 MHz, both near
+ 8-dips bank and two oscillators (4 MHz and 24 MHz, both near
  the sound parts).
 
 ClawGrip, Jul 2006
@@ -41,15 +41,20 @@ ClawGrip, Jul 2006
 */
 
 #include "emu.h"
+#include "includes/pokechmp.h"
+
 #include "cpu/m6502/m6502.h"
 #include "sound/2203intf.h"
 #include "sound/3812intf.h"
 #include "sound/okim6295.h"
-#include "includes/pokechmp.h"
+
+#include "screen.h"
+#include "speaker.h"
+
 
 WRITE8_MEMBER(pokechmp_state::pokechmp_bank_w)
 {
-	UINT8 *ROM = memregion("maincpu")->base();
+	uint8_t *ROM = memregion("maincpu")->base();
 
 	int bank;
 
@@ -62,14 +67,14 @@ WRITE8_MEMBER(pokechmp_state::pokechmp_bank_w)
 
 WRITE8_MEMBER(pokechmp_state::pokechmp_sound_bank_w)
 {
-	UINT8 *ROM = memregion("oki")->base();
+	uint8_t *ROM = memregion("oki")->base();
 	membank("okibank")->set_base(&ROM[data*0x8000]);
 }
 
 
 WRITE8_MEMBER(pokechmp_state::pokechmp_sound_w)
 {
-	soundlatch_byte_w(space, 0, data);
+	m_soundlatch->write(space, 0, data);
 	m_audiocpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
 
@@ -107,14 +112,14 @@ static ADDRESS_MAP_START( pokechmp_sound_map, AS_PROGRAM, 8, pokechmp_state )
 	AM_RANGE(0x1800, 0x1800) AM_WRITENOP    /* MSM5205 chip on Pocket Gal, not connected here? */
 	AM_RANGE(0x2000, 0x2000) AM_WRITE(pokechmp_sound_bank_w) /* sound rom bank seems to be replaced with OKI bank */
 	AM_RANGE(0x2800, 0x2800) AM_DEVREADWRITE("oki", okim6295_device, read, write) // extra
-	AM_RANGE(0x3000, 0x3000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x3000, 0x3000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 //  AM_RANGE(0x3400, 0x3400) AM_READ(pokechmp_adpcm_reset_r) /* not on here */
 	AM_RANGE(0x4000, 0x7fff) AM_ROMBANK("bank3")
 	AM_RANGE(0x8000, 0xffff) AM_ROM
 ADDRESS_MAP_END
 
 
-static ADDRESS_MAP_START( pokechmp_oki_map, AS_0, 8, pokechmp_state )
+static ADDRESS_MAP_START( pokechmp_oki_map, 0, 8, pokechmp_state )
 	AM_RANGE(0x00000, 0x37fff) AM_ROM
 	AM_RANGE(0x38000, 0x3ffff) AM_ROMBANK("okibank")
 ADDRESS_MAP_END
@@ -211,7 +216,7 @@ OKI M6295 (an AD65 on this board, note pin 7 is low): 1.5mhz
 
 */
 
-static MACHINE_CONFIG_START( pokechmp, pokechmp_state )
+static MACHINE_CONFIG_START( pokechmp )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, XTAL_4MHz/4)
@@ -238,16 +243,18 @@ static MACHINE_CONFIG_START( pokechmp, pokechmp_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, XTAL_4MHz/4)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 
 	MCFG_SOUND_ADD("ym2", YM3812, XTAL_24MHz/16)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 
-	MCFG_OKIM6295_ADD("oki", XTAL_24MHz/16, OKIM6295_PIN7_LOW)
+	MCFG_OKIM6295_ADD("oki", XTAL_24MHz/16, PIN7_LOW)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.50) /* sound fx */
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.50)
-	MCFG_DEVICE_ADDRESS_MAP(AS_0, pokechmp_oki_map)
+	MCFG_DEVICE_ADDRESS_MAP(0, pokechmp_oki_map)
 MACHINE_CONFIG_END
 
 DRIVER_INIT_MEMBER(pokechmp_state,pokechmp)

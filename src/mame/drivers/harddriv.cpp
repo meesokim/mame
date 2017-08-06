@@ -324,11 +324,13 @@ Notes:
 
 ****************************************************************************/
 
-
 #include "emu.h"
-#include "sound/dac.h"
-#include "includes/slapstic.h"
 #include "includes/harddriv.h"
+
+#include "includes/slapstic.h"
+#include "machine/watchdog.h"
+#include "sound/volt_reg.h"
+#include "speaker.h"
 
 #include "racedrivpan.lh"
 
@@ -338,10 +340,8 @@ Notes:
  *
  *************************************/
 
-const device_type HARDDRIV_DEVICE = &device_creator<harddriv_state>;
-
-harddriv_state::harddriv_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: device_t(mconfig, HARDDRIV_DEVICE, "Hard Drivin' PCB Family", tag, owner, clock, "harddriv_pcb", __FILE__),
+harddriv_state::harddriv_state(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, type, tag, owner, clock),
 /*  device_video_interface(mconfig, *this, false), */
 			m_maincpu(*this, "maincpu"),
 			m_gsp(*this, "gsp"),
@@ -351,8 +351,10 @@ harddriv_state::harddriv_state(const machine_config &mconfig, const char *tag, d
 			m_dsp32(*this, "dsp32"),
 			m_ds3sdsp(*this, "ds3sdsp"),
 			m_ds3xdsp(*this, "ds3xdsp"),
-			m_ds3dac1(*this, "ds3dac1"),
-			m_ds3dac2(*this, "ds3dac2"),
+			m_ds3sdsp_region(*this, "ds3sdsp"),
+			m_ds3xdsp_region(*this, "ds3xdsp"),
+			m_ldac(*this, "ldac"),
+			m_rdac(*this, "rdac"),
 			m_harddriv_sound(*this, "harddriv_sound"),
 			m_jsa(*this, "jsa"),
 			m_screen(*this, "screen"),
@@ -373,6 +375,7 @@ harddriv_state::harddriv_state(const machine_config &mconfig, const char *tag, d
 			m_ds3sdsp_data_memory(*this, "ds3sdsp_data"),
 			m_ds3sdsp_pgm_memory(*this, "ds3sdsp_pgm"),
 			m_ds3xdsp_pgm_memory(*this, "ds3xdsp_pgm"),
+			m_dsp32_ram(*this, "dsp32_ram"),
 			m_gsp_protection(nullptr),
 			m_gsp_speedup_pc(0),
 			m_msp_speedup_addr(nullptr),
@@ -389,8 +392,8 @@ harddriv_state::harddriv_state(const machine_config &mconfig, const char *tag, d
 			m_in0(*this, "IN0"),
 			m_sw1(*this, "SW1"),
 			m_a80000(*this, "a80000"),
-			m_8badc(*this, "8BADC"),
-			m_12badc(*this, "12BADC"),
+			m_8badc(*this, "8BADC.%u", 0),
+			m_12badc(*this, "12BADC.%u", 0),
 			m_irq_state(0),
 			m_gsp_irq_state(0),
 			m_msp_irq_state(0),
@@ -407,10 +410,9 @@ harddriv_state::harddriv_state(const machine_config &mconfig, const char *tag, d
 			m_adsp_sim_address(0),
 			m_adsp_som_address(0),
 			m_adsp_eprom_base(0),
-			m_sim_memory(nullptr),
-			m_sim_memory_size(0),
+			m_sim_memory(*this, "user1"),
 			m_adsp_pgm_memory_word(nullptr),
-			m_ds3_sdata_memory(*this, "ds3sdsp_data"),
+			m_ds3_sdata_memory(nullptr),
 			m_ds3_sdata_memory_size(0),
 			m_ds3_gcmd(0),
 			m_ds3_gflag(0),
@@ -460,7 +462,8 @@ harddriv_state::harddriv_state(const machine_config &mconfig, const char *tag, d
 			m_sound_int_state(0),
 			m_video_int_state(0),
 			m_palette(*this, "palette"),
-			m_slapstic_device(*this, "slapstic")
+			m_slapstic_device(*this, "slapstic"),
+			m_rs232(*this, "rs232")
 {
 	int i;
 
@@ -521,16 +524,12 @@ public:
 };
 
 
-WRITE16_MEMBER( harddriv_state::watchdog_reset16_w )
-{
-}
-
 static ADDRESS_MAP_START( driver_68k_map, AS_PROGRAM, 16, harddriv_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x000000, 0x0fffff) AM_ROM
 	AM_RANGE(0x600000, 0x603fff) AM_READ(hd68k_port0_r)
 	AM_RANGE(0x604000, 0x607fff) AM_WRITE(hd68k_nwr_w)
-	AM_RANGE(0x608000, 0x60bfff) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x608000, 0x60bfff) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x60c000, 0x60ffff) AM_WRITE(hd68k_irq_ack_w)
 	AM_RANGE(0xa00000, 0xa7ffff) AM_WRITE(hd68k_wr0_write)
 	AM_RANGE(0xa80000, 0xafffff) AM_READ(hd68k_a80000_r) AM_WRITE(hd68k_wr1_write)
@@ -577,7 +576,7 @@ static ADDRESS_MAP_START( multisync_68k_map, AS_PROGRAM, 16, harddriv_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x000000, 0x0fffff) AM_ROM
 	AM_RANGE(0x604000, 0x607fff) AM_READWRITE(hd68k_sound_reset_r, hd68k_nwr_w)
-	AM_RANGE(0x608000, 0x60bfff) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x608000, 0x60bfff) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x60c000, 0x60ffff) AM_READWRITE(hd68k_port0_r, hd68k_irq_ack_w)
 	AM_RANGE(0xa00000, 0xa7ffff) AM_WRITE(hd68k_wr0_write)
 	AM_RANGE(0xa80000, 0xafffff) AM_READ(hd68k_a80000_r) AM_WRITE(hd68k_wr1_write)
@@ -615,7 +614,7 @@ static ADDRESS_MAP_START( multisync2_68k_map, AS_PROGRAM, 16, harddriv_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x000000, 0x1fffff) AM_ROM
 	AM_RANGE(0x604000, 0x607fff) AM_WRITE(hd68k_nwr_w)
-	AM_RANGE(0x608000, 0x60bfff) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x608000, 0x60bfff) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x60c000, 0x60ffff) AM_READWRITE(hd68k_port0_r, hd68k_irq_ack_w)
 	AM_RANGE(0xa00000, 0xa7ffff) AM_WRITE(hd68k_wr0_write)
 	AM_RANGE(0xa80000, 0xafffff) AM_READ(hd68k_a80000_r) AM_WRITE(hd68k_wr1_write)
@@ -653,6 +652,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( adsp_program_map, AS_PROGRAM, 32, harddriv_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x0000, 0x1fff) AM_RAM AM_SHARE("adsp_pgm_memory")
+	AM_RANGE(0x2000, 0x3fff) AM_READNOP // ROM?
 ADDRESS_MAP_END
 
 
@@ -721,7 +721,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( dsk_dsp32_map, AS_PROGRAM, 32, harddriv_state )
 	ADDRESS_MAP_UNMAP_HIGH
 	AM_RANGE(0x000000, 0x001fff) AM_RAM
-	AM_RANGE(0x600000, 0x63ffff) AM_RAM
+	AM_RANGE(0x600000, 0x63ffff) AM_RAM AM_SHARE("dsp32_ram")
 	AM_RANGE(0xfff800, 0xffffff) AM_RAM
 ADDRESS_MAP_END
 
@@ -818,17 +818,16 @@ static INPUT_PORTS_START( harddriv )
 	PORT_BIT( 0xff, 0x80, IPT_SPECIAL )
 
 	PORT_START("mainpcb:12BADC.0")       /* b80000 - 12 bit ADC 0 - steering wheel */
-	PORT_BIT( 0xff, 0x80, IPT_PADDLE ) PORT_MINMAX(0x10,0xf0) PORT_SENSITIVITY(25) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
+	PORT_BIT( 0xfff, 0x800, IPT_PADDLE ) PORT_MINMAX(0x010,0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
 
 	PORT_START("mainpcb:12BADC.1")       /* b80000 - 12 bit ADC 1 - force brake */
-	PORT_BIT( 0xff, 0x00, IPT_PEDAL2 ) PORT_SENSITIVITY(25) PORT_KEYDELTA(40) PORT_REVERSE PORT_NAME("Force Brake")
+	PORT_BIT( 0xfff, 0x000, IPT_PEDAL2 ) PORT_SENSITIVITY(400) PORT_KEYDELTA(100) PORT_REVERSE PORT_NAME("Brake Pedal")
 
 	PORT_START("mainpcb:12BADC.2")       /* b80000 - 12 bit ADC 2 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.3")       /* b80000 - 12 bit ADC 3 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
-
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 INPUT_PORTS_END
 
 
@@ -902,16 +901,16 @@ static INPUT_PORTS_START( racedriv )
 	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.0")       /* b80000 - 12 bit ADC 0 - steering wheel */
-	PORT_BIT( 0xff, 0x80, IPT_PADDLE ) PORT_MINMAX(0x10,0xf0) PORT_SENSITIVITY(25) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
+	PORT_BIT( 0xfff, 0x800, IPT_PADDLE ) PORT_MINMAX(0x010,0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
 
 	PORT_START("mainpcb:12BADC.1")       /* b80000 - 12 bit ADC 1 - force brake */
-	PORT_BIT( 0xff, 0x00, IPT_PEDAL2 ) PORT_SENSITIVITY(25) PORT_KEYDELTA(40) PORT_REVERSE PORT_NAME("Force Brake")
+	PORT_BIT( 0xfff, 0x000, IPT_PEDAL2 ) PORT_SENSITIVITY(400) PORT_KEYDELTA(100) PORT_REVERSE PORT_NAME("Brake Pedal")
 
 	PORT_START("mainpcb:12BADC.2")       /* b80000 - 12 bit ADC 2 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.3")       /* b80000 - 12 bit ADC 3 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 INPUT_PORTS_END
 
 static INPUT_PORTS_START( racedriv_pan )
@@ -1032,15 +1031,15 @@ static INPUT_PORTS_START( racedrivc )
 	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.0")       /* 400000 - steering wheel */
-	PORT_BIT( 0xff, 0x80, IPT_PADDLE ) PORT_MINMAX(0x10,0xf0) PORT_SENSITIVITY(25) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
+	PORT_BIT(0xfff, 0x800, IPT_PADDLE) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
 
 	/* dummy ADC ports to end up with the same number as the full version */
 	PORT_START("mainpcb:12BADC.1")
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_START("mainpcb:12BADC.2")
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_START("mainpcb:12BADC.3")
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 INPUT_PORTS_END
 
 
@@ -1114,16 +1113,16 @@ static INPUT_PORTS_START( stunrun )
 	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.0")       /* b80000 - 12 bit ADC 0 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.1")       /* b80000 - 12 bit ADC 1 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.2")       /* b80000 - 12 bit ADC 2 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.3")       /* b80000 - 12 bit ADC 3 */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	/* stunrun has its own coins */
 // todo
@@ -1204,16 +1203,16 @@ static INPUT_PORTS_START( steeltal )
 	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.0")       /* b80000 - 12 bit ADC 0 */
-	PORT_BIT( 0xff, 0x80, IPT_AD_STICK_X ) PORT_SENSITIVITY(25) PORT_KEYDELTA(10)   /* left/right */
+	PORT_BIT( 0xfff, 0x800, IPT_AD_STICK_X ) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(10)   /* left/right */
 
 	PORT_START("mainpcb:12BADC.1")       /* b80000 - 12 bit ADC 1 */
-	PORT_BIT( 0xff, 0x80, IPT_AD_STICK_Y ) PORT_SENSITIVITY(25) PORT_KEYDELTA(10)   /* up/down */
+	PORT_BIT( 0xfff, 0x800, IPT_AD_STICK_Y ) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(10)   /* up/down */
 
 	PORT_START("mainpcb:12BADC.2")       /* b80000 - 12 bit ADC 2 */
-	PORT_BIT( 0xff, 0x80, IPT_AD_STICK_Z ) PORT_SENSITIVITY(25) PORT_KEYDELTA(10)  PORT_NAME("Collective") PORT_REVERSE /* collective */
+	PORT_BIT( 0xfff, 0x800, IPT_AD_STICK_Z ) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(10) PORT_NAME("Collective") PORT_REVERSE /* collective */
 
 	PORT_START("mainpcb:12BADC.3")       /* b80000 - 12 bit ADC 3 */
-	PORT_BIT( 0xff, 0x80, IPT_AD_STICK_X ) PORT_SENSITIVITY(25) PORT_KEYDELTA(10)  PORT_NAME("Rudder") PORT_PLAYER(2)   /* rudder */
+	PORT_BIT( 0xfff, 0x800, IPT_AD_STICK_X ) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(10) PORT_NAME("Rudder") PORT_PLAYER(2)   /* rudder */
 
 	/* steeltal has its own coins */
 // todo
@@ -1286,30 +1285,30 @@ static INPUT_PORTS_START( strtdriv )
 	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:8BADC.3")        /* b00000 - 8 bit ADC 3 - volume */
-	PORT_BIT( 0xff, 0X80, IPT_UNUSED )
+	PORT_BIT( 0xff, 0x80, IPT_UNUSED )
 
 	PORT_START("mainpcb:8BADC.4")        /* b00000 - 8 bit ADC 4 - elevator */
 	PORT_BIT( 0xff, 0x80, IPT_AD_STICK_Y ) PORT_SENSITIVITY(25) PORT_KEYDELTA(10) PORT_NAME("Elevator") PORT_REVERSE  /* up/down */
 
 	PORT_START("mainpcb:8BADC.5")        /* b00000 - 8 bit ADC 5 - canopy */
-	PORT_BIT( 0xff, 0X80, IPT_UNUSED )
+	PORT_BIT( 0xff, 0x80, IPT_UNUSED )
 
 	PORT_START("mainpcb:8BADC.6")        /* b00000 - 8 bit ADC 6 - brake */
 	PORT_BIT( 0xff, 0x00, IPT_PEDAL2 ) PORT_SENSITIVITY(25) PORT_KEYDELTA(40) PORT_NAME("Brake") PORT_REVERSE
 
 	PORT_START("mainpcb:8BADC.7")        /* b00000 - 8 bit ADC 7 - seat adjust */
-	PORT_BIT( 0xff, 0X80, IPT_UNUSED )
+	PORT_BIT( 0xff, 0x80, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.0")       /* 400000 - steering wheel */
-	PORT_BIT( 0xff, 0x80, IPT_PADDLE ) PORT_MINMAX(0x10,0xf0) PORT_SENSITIVITY(25) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
+	PORT_BIT(0xfff, 0x800, IPT_PADDLE) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(5) PORT_NAME("Steering Wheel")
 
 	/* dummy ADC ports to end up with the same number as the full version */
 	PORT_START("mainpcb:12BADC.1")       /* FAKE */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_START("mainpcb:12BADC.2")       /* FAKE */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_START("mainpcb:12BADC.3")       /* FAKE */
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 INPUT_PORTS_END
 
 
@@ -1376,30 +1375,30 @@ static INPUT_PORTS_START( hdrivair )
 	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
 
 	PORT_START("mainpcb:8BADC.3")        /* b00000 - 8 bit ADC 3 - volume */
-	PORT_BIT( 0xff, 0X80, IPT_UNUSED )
+	PORT_BIT( 0xff, 0x80, IPT_UNUSED )
 
 	PORT_START("mainpcb:8BADC.4")        /* b00000 - 8 bit ADC 4 - elevator */
 	PORT_BIT( 0xff, 0x80, IPT_AD_STICK_Y ) PORT_SENSITIVITY(25) PORT_KEYDELTA(10) PORT_REVERSE PORT_NAME("Elevator") /* up/down */
 
 	PORT_START("mainpcb:8BADC.5")        /* b00000 - 8 bit ADC 5 - canopy */
-	PORT_BIT( 0xff, 0X80, IPT_UNUSED )
+	PORT_BIT( 0xff, 0x80, IPT_UNUSED )
 
 	PORT_START("mainpcb:8BADC.6")        /* b00000 - 8 bit ADC 6 - brake */
 	PORT_BIT( 0xff, 0x00, IPT_PEDAL2 ) PORT_SENSITIVITY(25) PORT_KEYDELTA(40) PORT_REVERSE PORT_NAME("Brake")
 
 	PORT_START("mainpcb:8BADC.7")        /* b00000 - 8 bit ADC 7 - seat adjust */
-	PORT_BIT( 0xff, 0X80, IPT_UNUSED )
+	PORT_BIT( 0xff, 0x80, IPT_UNUSED )
 
 	PORT_START("mainpcb:12BADC.0")       /* 400000 - steering wheel */
-	PORT_BIT( 0xff, 0x80, IPT_PADDLE ) PORT_MINMAX(0x10,0xf0) PORT_SENSITIVITY(25) PORT_KEYDELTA(5) PORT_REVERSE PORT_NAME("Steering Wheel")
+	PORT_BIT(0xfff, 0x800, IPT_PADDLE) PORT_MINMAX(0x010, 0xff0) PORT_SENSITIVITY(400) PORT_KEYDELTA(5) PORT_REVERSE PORT_NAME("Steering Wheel")
 
 	/* dummy ADC ports to end up with the same number as the full version */
 	PORT_START("mainpcb:12BADC.1")
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_START("mainpcb:12BADC.2")
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_START("mainpcb:12BADC.3")
-	PORT_BIT( 0xff, IP_ACTIVE_LOW, IPT_UNUSED )
+	PORT_BIT( 0xfff, IP_ACTIVE_LOW, IPT_UNUSED )
 INPUT_PORTS_END
 
 
@@ -1417,7 +1416,7 @@ INTERRUPT_GEN_MEMBER(harddriv_state::video_int_gen)
 
 
 /* Driver board without MSP (used by Race Drivin' cockpit) */
-static MACHINE_CONFIG_FRAGMENT( driver_nomsp )
+static MACHINE_CONFIG_START( driver_nomsp )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68010, HARDDRIV_MASTER_CLOCK/4)
@@ -1428,9 +1427,11 @@ static MACHINE_CONFIG_FRAGMENT( driver_nomsp )
 	MCFG_SLAPSTIC_ADD("slapstic", 117)
 	MCFG_SLAPSTIC_68K_ACCESS(1)
 
+	MCFG_WATCHDOG_ADD("watchdog")
+
 	MCFG_CPU_ADD("gsp", TMS34010, HARDDRIV_GSP_CLOCK)
 	MCFG_CPU_PROGRAM_MAP(driver_gsp_map)
-	MCFG_TMS340X0_HALT_ON_RESET(TRUE) /* halt on reset */
+	MCFG_TMS340X0_HALT_ON_RESET(true) /* halt on reset */
 	MCFG_TMS340X0_PIXEL_CLOCK(4000000) /* pixel clock */
 	MCFG_TMS340X0_PIXELS_PER_CLOCK(4) /* pixels per clock */
 	MCFG_TMS340X0_SCANLINE_IND16_CB(harddriv_state, scanline_driver) /* scanline callback (indexed16) */
@@ -1446,6 +1447,10 @@ static MACHINE_CONFIG_FRAGMENT( driver_nomsp )
 
 	MCFG_MC68681_ADD("duartn68681", XTAL_3_6864MHz)
 	MCFG_MC68681_IRQ_CALLBACK(WRITELINE(harddriv_state, harddriv_duart_irq_handler))
+	MCFG_MC68681_A_TX_CALLBACK(DEVWRITELINE ("rs232", rs232_port_device, write_txd))
+
+	MCFG_RS232_PORT_ADD("rs232", default_rs232_devices, nullptr)
+	MCFG_RS232_RXD_HANDLER(DEVWRITELINE ("duartn68681", mc68681_device, rx_a_w))
 
 	/* video hardware */
 	MCFG_PALETTE_ADD("palette", 1024)
@@ -1459,14 +1464,14 @@ MACHINE_CONFIG_END
 
 
 /* Driver board with MSP (used by Hard Drivin' cockpit) */
-static MACHINE_CONFIG_FRAGMENT( driver_msp )
+static MACHINE_CONFIG_START( driver_msp )
 
 	MCFG_FRAGMENT_ADD( driver_nomsp )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("msp", TMS34010, XTAL_50MHz)
 	MCFG_CPU_PROGRAM_MAP(driver_msp_map)
-	MCFG_TMS340X0_HALT_ON_RESET(TRUE) /* halt on reset */
+	MCFG_TMS340X0_HALT_ON_RESET(true) /* halt on reset */
 	MCFG_TMS340X0_PIXEL_CLOCK(5000000) /* pixel clock */
 	MCFG_TMS340X0_PIXELS_PER_CLOCK(2) /* pixels per clock */
 	MCFG_TMS340X0_OUTPUT_INT_CB(WRITELINE(harddriv_state, hdmsp_irq_gen))
@@ -1477,7 +1482,7 @@ MACHINE_CONFIG_END
 
 
 /* Multisync board without MSP (used by STUN Runner, Steel Talons, Race Drivin' compact) */
-static MACHINE_CONFIG_FRAGMENT( multisync_nomsp )
+static MACHINE_CONFIG_START( multisync_nomsp )
 
 	MCFG_FRAGMENT_ADD( driver_nomsp )
 
@@ -1498,14 +1503,14 @@ MACHINE_CONFIG_END
 
 
 /* Multisync board with MSP (used by Hard Drivin' compact) */
-static MACHINE_CONFIG_FRAGMENT( multisync_msp )
+static MACHINE_CONFIG_START( multisync_msp )
 
 	MCFG_FRAGMENT_ADD( multisync_nomsp )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("msp", TMS34010, XTAL_50MHz)
 	MCFG_CPU_PROGRAM_MAP(driver_msp_map)
-	MCFG_TMS340X0_HALT_ON_RESET(TRUE) /* halt on reset */
+	MCFG_TMS340X0_HALT_ON_RESET(true) /* halt on reset */
 	MCFG_TMS340X0_PIXEL_CLOCK(5000000) /* pixel clock */
 	MCFG_TMS340X0_PIXELS_PER_CLOCK(2) /* pixels per clock */
 	MCFG_TMS340X0_OUTPUT_INT_CB(WRITELINE(harddriv_state, hdmsp_irq_gen))
@@ -1516,7 +1521,7 @@ MACHINE_CONFIG_END
 
 
 /* Multisync II board (used by Hard Drivin's Airborne) */
-static MACHINE_CONFIG_FRAGMENT( multisync2 )
+static MACHINE_CONFIG_START( multisync2 )
 
 	MCFG_FRAGMENT_ADD( multisync_nomsp )
 
@@ -1539,7 +1544,7 @@ MACHINE_CONFIG_END
  *************************************/
 
 /* ADSP/ADSP II boards (used by Hard/Race Drivin', STUN Runner) */
-static MACHINE_CONFIG_FRAGMENT( adsp )
+static MACHINE_CONFIG_START( adsp )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("adsp", ADSP2100, XTAL_32MHz/4)
@@ -1549,7 +1554,7 @@ MACHINE_CONFIG_END
 
 
 /* DS III/IV board (used by Steel Talons, Street Drivin' and Hard Drivin's Airborne) */
-static MACHINE_CONFIG_FRAGMENT( ds3 )
+static MACHINE_CONFIG_START( ds3 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("adsp", ADSP2101, XTAL_12MHz)
@@ -1575,11 +1580,11 @@ static MACHINE_CONFIG_FRAGMENT( ds3 )
 
 	MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
 
-	MCFG_SOUND_ADD("ds3dac1", DAC, 0)
-	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 1.0)
-
-	MCFG_SOUND_ADD("ds3dac2", DAC, 0)
-	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 1.0)
+	MCFG_SOUND_ADD("ldac", DAC_16BIT_R2R, 0) MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 1.0) // unknown DAC
+	MCFG_SOUND_ADD("rdac", DAC_16BIT_R2R, 0) MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 1.0) // unknown DAC
+	MCFG_DEVICE_ADD("vref", VOLTAGE_REGULATOR, 0) MCFG_VOLTAGE_REGULATOR_OUTPUT(5.0)
+	MCFG_SOUND_ROUTE_EX(0, "ldac", 1.0, DAC_VREF_POS_INPUT) MCFG_SOUND_ROUTE_EX(0, "ldac", -1.0, DAC_VREF_NEG_INPUT)
+	MCFG_SOUND_ROUTE_EX(0, "rdac", 1.0, DAC_VREF_POS_INPUT) MCFG_SOUND_ROUTE_EX(0, "rdac", -1.0, DAC_VREF_NEG_INPUT)
 MACHINE_CONFIG_END
 
 
@@ -1591,7 +1596,7 @@ MACHINE_CONFIG_END
  *************************************/
 
 /* DSK board (used by Race Drivin') */
-static MACHINE_CONFIG_FRAGMENT( dsk )
+static MACHINE_CONFIG_START( dsk )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("dsp32", DSP32C, XTAL_40MHz)
@@ -1607,7 +1612,7 @@ MACHINE_CONFIG_END
 
 
 /* DSK II board (used by Hard Drivin's Airborne) */
-static MACHINE_CONFIG_FRAGMENT( dsk2 )
+static MACHINE_CONFIG_START( dsk2 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("dsp32", DSP32C, XTAL_40MHz)
@@ -1619,58 +1624,6 @@ static MACHINE_CONFIG_FRAGMENT( dsk2 )
 MACHINE_CONFIG_END
 
 
-
-/*************************************
- *
- *  Machine drivers
- *
- *************************************/
-
-static MACHINE_CONFIG_FRAGMENT( harddriv )
-	MCFG_FRAGMENT_ADD( driver_msp )
-	/* basic machine hardware */        /* original driver board with MSP */
-	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
-	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD_DEVICE, 0)      /* driver sound board */
-MACHINE_CONFIG_END
-
-static MACHINE_CONFIG_FRAGMENT( harddrivc )
-	MCFG_FRAGMENT_ADD( multisync_msp )
-
-	/* basic machine hardware */        /* multisync board with MSP */
-	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
-	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD_DEVICE, 0)      /* driver sound board */
-MACHINE_CONFIG_END
-
-static MACHINE_CONFIG_FRAGMENT( racedriv )
-	MCFG_FRAGMENT_ADD( driver_nomsp )
-
-	/* basic machine hardware */        /* original driver board without MSP */
-	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
-	MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
-	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD_DEVICE, 0)      /* driver sound board */
-MACHINE_CONFIG_END
-
-static MACHINE_CONFIG_FRAGMENT( racedrivc )
-
-	MCFG_FRAGMENT_ADD( multisync_nomsp )
-
-	/* basic machine hardware */        /* multisync board without MSP */
-	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
-	MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
-	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD_DEVICE, 0)      /* driver sound board */
-MACHINE_CONFIG_END
-
-
-static MACHINE_CONFIG_FRAGMENT( racedrivc_panorama_side )
-
-	MCFG_FRAGMENT_ADD( multisync_nomsp )
-
-	/* basic machine hardware */        /* multisync board without MSP */
-	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
-//  MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
-//  MCFG_DEVICE_ADD("sound_board", HARDDRIV_SOUND_BOARD_DEVICE, 0)      /* driver sound board */
-MACHINE_CONFIG_END
-
 WRITE_LINE_MEMBER(harddriv_state::sound_int_write_line)
 {
 	m_sound_int_state = state;
@@ -1678,82 +1631,19 @@ WRITE_LINE_MEMBER(harddriv_state::sound_int_write_line)
 }
 
 
-static MACHINE_CONFIG_FRAGMENT( stunrun )
+DEFINE_DEVICE_TYPE(HARDDRIV_BOARD, harddriv_board_device_state, "harddriv_board", "Hard Drivin' Board Device")
 
-	MCFG_FRAGMENT_ADD( multisync_nomsp )
+harddriv_board_device_state::harddriv_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, HARDDRIV_BOARD, tag, owner, clock)
+{
+}
 
-	/* basic machine hardware */        /* multisync board without MSP */
-	MCFG_CPU_MODIFY("gsp")
-	MCFG_TMS340X0_PIXEL_CLOCK(5000000)  /* pixel clock */
+MACHINE_CONFIG_MEMBER( harddriv_board_device_state::device_add_mconfig )
+	MCFG_FRAGMENT_ADD( driver_msp )
+	/* basic machine hardware */        /* original driver board with MSP */
 	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
-	MCFG_DEVICE_REMOVE("slapstic")
-
-	/* video hardware */
-	MCFG_SCREEN_MODIFY("screen")
-	MCFG_SCREEN_RAW_PARAMS(5000000*2, 317*2, 0, 256*2, 262, 0, 228)
-
-	/* sund hardware */
-	MCFG_SPEAKER_STANDARD_MONO("mono")
-
-	MCFG_ATARI_JSA_II_ADD("jsa", WRITELINE(harddriv_state, sound_int_write_line))
-	MCFG_ATARI_JSA_TEST_PORT("IN0", 5)
-	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
+	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD, 0)      /* driver sound board */
 MACHINE_CONFIG_END
-
-static MACHINE_CONFIG_FRAGMENT( steeltal )
-	MCFG_FRAGMENT_ADD( multisync_msp )
-
-	/* basic machine hardware */        /* multisync board with MSP */
-	MCFG_FRAGMENT_ADD( ds3 )            /* DS III board */
-	MCFG_DEVICE_REMOVE("ds3sdsp")       /* DS III sound components are not present */
-	MCFG_DEVICE_REMOVE("ds3xdsp")
-	MCFG_DEVICE_REMOVE("ds3dac1")
-	MCFG_DEVICE_REMOVE("ds3dac2")
-	MCFG_DEVICE_REMOVE("lspeaker")
-	MCFG_DEVICE_REMOVE("rspeaker")
-
-	MCFG_ASIC65_ADD("asic65", ASIC65_STEELTAL)         /* ASIC65 on DSPCOM board */
-
-	/* sund hardware */
-	MCFG_SPEAKER_STANDARD_MONO("mono")
-
-	MCFG_ATARI_JSA_III_ADD("jsa", WRITELINE(harddriv_state, sound_int_write_line))
-	MCFG_ATARI_JSA_TEST_PORT("IN0", 5)
-	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
-MACHINE_CONFIG_END
-
-static MACHINE_CONFIG_FRAGMENT( strtdriv )
-
-	MCFG_FRAGMENT_ADD( multisync_nomsp )
-
-	/* basic machine hardware */        /* multisync board */
-	MCFG_FRAGMENT_ADD( ds3 )            /* DS III board */
-	MCFG_CPU_MODIFY("ds3xdsp")          /* DS III auxiliary sound DSP has no code */
-	MCFG_DEVICE_DISABLE()
-
-	MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
-MACHINE_CONFIG_END
-
-static MACHINE_CONFIG_FRAGMENT( hdrivair )
-
-	MCFG_FRAGMENT_ADD( multisync2 )
-
-	/* basic machine hardware */        /* multisync II board */
-	MCFG_FRAGMENT_ADD( ds3 )            /* DS IV board */
-	MCFG_FRAGMENT_ADD( dsk2 )           /* DSK II board */
-MACHINE_CONFIG_END
-
-const device_type HARDDRIV_BOARD_DEVICE = &device_creator<harddriv_board_device_state>;
-
-harddriv_board_device_state::harddriv_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
-{
-}
-
-machine_config_constructor harddriv_board_device_state::device_mconfig_additions() const
-{
-	return MACHINE_CONFIG_NAME( harddriv );
-}
 
 void harddriv_board_device_state::device_start()
 {
@@ -1769,17 +1659,20 @@ void harddrivc_board_device_state::device_start()
 	harddriv_state::device_start();
 }
 
-const device_type HARDDRIVC_BOARD_DEVICE = &device_creator<harddrivc_board_device_state>;
+DEFINE_DEVICE_TYPE(HARDDRIVC_BOARD, harddrivc_board_device_state, "harddrivc_board", "Hard Drivin' C Board Device")
 
-harddrivc_board_device_state::harddrivc_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+harddrivc_board_device_state::harddrivc_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, HARDDRIVC_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor harddrivc_board_device_state::device_mconfig_additions() const
-{
-	return MACHINE_CONFIG_NAME( harddrivc );
-}
+MACHINE_CONFIG_MEMBER( harddrivc_board_device_state::device_add_mconfig )
+	MCFG_FRAGMENT_ADD( multisync_msp )
+
+	/* basic machine hardware */        /* multisync board with MSP */
+	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
+	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD, 0)      /* driver sound board */
+MACHINE_CONFIG_END
 
 
 /* Race Drivin */
@@ -1796,19 +1689,32 @@ void racedrivb1_board_device_state::device_start()
 	harddriv_state::device_start();
 }
 
-const device_type RACEDRIV_BOARD_DEVICE = &device_creator<racedriv_board_device_state>;
-const device_type RACEDRIVB1_BOARD_DEVICE = &device_creator<racedrivb1_board_device_state>;
+DEFINE_DEVICE_TYPE(RACEDRIV_BOARD, racedriv_board_device_state, "racedriv_board", "Race Drivin' Board Device")
+DEFINE_DEVICE_TYPE(RACEDRIVB1_BOARD, racedrivb1_board_device_state, "racedrivb1_board", "Race Drivin' B1 Board Device")
 
-racedriv_board_device_state::racedriv_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+racedriv_board_device_state::racedriv_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: racedriv_board_device_state(mconfig, RACEDRIV_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor racedriv_board_device_state::device_mconfig_additions() const
+racedriv_board_device_state::racedriv_board_device_state(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, type, tag, owner, clock)
 {
-	return MACHINE_CONFIG_NAME( racedriv );
 }
 
+racedrivb1_board_device_state::racedrivb1_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: racedriv_board_device_state(mconfig, RACEDRIVB1_BOARD, tag, owner, clock)
+{
+}
+
+MACHINE_CONFIG_MEMBER( racedriv_board_device_state::device_add_mconfig )
+	MCFG_FRAGMENT_ADD( driver_nomsp )
+
+	/* basic machine hardware */        /* original driver board without MSP */
+	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
+	MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
+	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD, 0)      /* driver sound board */
+MACHINE_CONFIG_END
 
 /* Race Drivin Compact */
 
@@ -1832,25 +1738,49 @@ void racedrivc_panorama_side_board_device_state::device_start()
 
 
 
-const device_type RACEDRIVC_BOARD_DEVICE = &device_creator<racedrivc_board_device_state>;
-const device_type RACEDRIVC1_BOARD_DEVICE = &device_creator<racedrivc1_board_device_state>;
-const device_type RACEDRIVC_PANORAMA_SIDE_BOARD_DEVICE = &device_creator<racedrivc_panorama_side_board_device_state>;
+DEFINE_DEVICE_TYPE(RACEDRIVC_BOARD, racedrivc_board_device_state, "racedrivc_board", "Race Drivin' C Board Device")
+DEFINE_DEVICE_TYPE(RACEDRIVC1_BOARD, racedrivc1_board_device_state, "racedrivc1_board", "Race Drivin' C1 Board Device")
+DEFINE_DEVICE_TYPE(RACEDRIVC_PANORAMA_SIDE_BOARD, racedrivc_panorama_side_board_device_state, "racedrivc_panorama_side_board", "Race Drivin' C Panorama Board Device")
 
-racedrivc_board_device_state::racedrivc_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+racedrivc_board_device_state::racedrivc_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: racedrivc_board_device_state(mconfig, RACEDRIVC_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor racedrivc_board_device_state::device_mconfig_additions() const
+racedrivc_board_device_state::racedrivc_board_device_state(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, type, tag, owner, clock)
 {
-	return MACHINE_CONFIG_NAME( racedrivc );
 }
 
-machine_config_constructor racedrivc_panorama_side_board_device_state::device_mconfig_additions() const
+racedrivc1_board_device_state::racedrivc1_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: racedrivc_board_device_state(mconfig, RACEDRIVC1_BOARD, tag, owner, clock)
 {
-	return MACHINE_CONFIG_NAME( racedrivc_panorama_side );
 }
 
+racedrivc_panorama_side_board_device_state::racedrivc_panorama_side_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: racedrivc_board_device_state(mconfig, RACEDRIVC_PANORAMA_SIDE_BOARD, tag, owner, clock)
+{
+}
+
+MACHINE_CONFIG_MEMBER( racedrivc_board_device_state::device_add_mconfig )
+
+	MCFG_FRAGMENT_ADD( multisync_nomsp )
+
+	/* basic machine hardware */        /* multisync board without MSP */
+	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
+	MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
+	MCFG_DEVICE_ADD("harddriv_sound", HARDDRIV_SOUND_BOARD, 0)      /* driver sound board */
+MACHINE_CONFIG_END
+
+MACHINE_CONFIG_MEMBER( racedrivc_panorama_side_board_device_state::device_add_mconfig )
+
+	MCFG_FRAGMENT_ADD( multisync_nomsp )
+
+	/* basic machine hardware */        /* multisync board without MSP */
+	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
+//  MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
+//  MCFG_DEVICE_ADD("sound_board", HARDDRIV_SOUND_BOARD, 0)      /* driver sound board */
+MACHINE_CONFIG_END
 
 /* Stun Runner */
 
@@ -1860,17 +1790,34 @@ void stunrun_board_device_state::device_start()
 	harddriv_state::device_start();
 }
 
-const device_type STUNRUN_BOARD_DEVICE = &device_creator<stunrun_board_device_state>;
+DEFINE_DEVICE_TYPE(STUNRUN_BOARD, stunrun_board_device_state, "stunrun_board", "Stun Runner Board Device")
 
-stunrun_board_device_state::stunrun_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+stunrun_board_device_state::stunrun_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, STUNRUN_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor stunrun_board_device_state::device_mconfig_additions() const
-{
-	return MACHINE_CONFIG_NAME( stunrun );
-}
+MACHINE_CONFIG_MEMBER( stunrun_board_device_state::device_add_mconfig )
+
+	MCFG_FRAGMENT_ADD( multisync_nomsp )
+
+	/* basic machine hardware */        /* multisync board without MSP */
+	MCFG_CPU_MODIFY("gsp")
+	MCFG_TMS340X0_PIXEL_CLOCK(5000000)  /* pixel clock */
+	MCFG_FRAGMENT_ADD( adsp )           /* ADSP board */
+	MCFG_DEVICE_REMOVE("slapstic")
+
+	/* video hardware */
+	MCFG_SCREEN_MODIFY("screen")
+	MCFG_SCREEN_RAW_PARAMS(5000000*2, 317*2, 0, 256*2, 262, 0, 228)
+
+	/* sund hardware */
+	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_ATARI_JSA_II_ADD("jsa", WRITELINE(harddriv_state, sound_int_write_line))
+	MCFG_ATARI_JSA_TEST_PORT("IN0", 5)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
+MACHINE_CONFIG_END
 
 /* Steel Talons */
 
@@ -1892,19 +1839,52 @@ void steeltalp_board_device_state::device_start()
 	harddriv_state::device_start();
 }
 
-const device_type STEELTAL_BOARD_DEVICE = &device_creator<steeltal_board_device_state>;
-const device_type STEELTAL1_BOARD_DEVICE = &device_creator<steeltal1_board_device_state>;
-const device_type STEELTALP_BOARD_DEVICE = &device_creator<steeltalp_board_device_state>;
+DEFINE_DEVICE_TYPE(STEELTAL_BOARD, steeltal_board_device_state, "steeltal_board", "Steel Talons Board Device")
+DEFINE_DEVICE_TYPE(STEELTAL1_BOARD, steeltal1_board_device_state, "steeltal1_board", "Steel Talons 1 Board Device")
+DEFINE_DEVICE_TYPE(STEELTALP_BOARD, steeltalp_board_device_state, "steeltalp_board", "Steel Talons P Board Device")
 
-steeltal_board_device_state::steeltal_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+steeltal_board_device_state::steeltal_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: steeltal_board_device_state(mconfig, STEELTAL_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor steeltal_board_device_state::device_mconfig_additions() const
+steeltal_board_device_state::steeltal_board_device_state(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, type, tag, owner, clock)
 {
-	return MACHINE_CONFIG_NAME( steeltal );
 }
+
+steeltal1_board_device_state::steeltal1_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: steeltal_board_device_state(mconfig, STEELTAL1_BOARD, tag, owner, clock)
+{
+}
+
+steeltalp_board_device_state::steeltalp_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: steeltal_board_device_state(mconfig, STEELTALP_BOARD, tag, owner, clock)
+{
+}
+
+MACHINE_CONFIG_MEMBER( steeltal_board_device_state::device_add_mconfig )
+	MCFG_FRAGMENT_ADD( multisync_msp )
+
+	/* basic machine hardware */        /* multisync board with MSP */
+	MCFG_FRAGMENT_ADD( ds3 )            /* DS III board */
+	MCFG_DEVICE_REMOVE("ds3sdsp")       /* DS III sound components are not present */
+	MCFG_DEVICE_REMOVE("ds3xdsp")
+	MCFG_DEVICE_REMOVE("ldac")
+	MCFG_DEVICE_REMOVE("rdac")
+	MCFG_DEVICE_REMOVE("vref")
+	MCFG_DEVICE_REMOVE("lspeaker")
+	MCFG_DEVICE_REMOVE("rspeaker")
+
+	MCFG_ASIC65_ADD("asic65", ASIC65_STEELTAL)         /* ASIC65 on DSPCOM board */
+
+	/* sund hardware */
+	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_ATARI_JSA_III_ADD("jsa", WRITELINE(harddriv_state, sound_int_write_line))
+	MCFG_ATARI_JSA_TEST_PORT("IN0", 5)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
+MACHINE_CONFIG_END
 
 /* Street Drivin' */
 
@@ -1914,17 +1894,24 @@ void strtdriv_board_device_state::device_start()
 	harddriv_state::device_start();
 }
 
-const device_type STRTDRIV_BOARD_DEVICE = &device_creator<strtdriv_board_device_state>;
+DEFINE_DEVICE_TYPE(STRTDRIV_BOARD, strtdriv_board_device_state, "strtdriv_board", "Street Drivin' Board Device")
 
-strtdriv_board_device_state::strtdriv_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+strtdriv_board_device_state::strtdriv_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, STRTDRIV_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor strtdriv_board_device_state::device_mconfig_additions() const
-{
-	return MACHINE_CONFIG_NAME( strtdriv );
-}
+MACHINE_CONFIG_MEMBER( strtdriv_board_device_state::device_add_mconfig )
+
+	MCFG_FRAGMENT_ADD( multisync_nomsp )
+
+	/* basic machine hardware */        /* multisync board */
+	MCFG_FRAGMENT_ADD( ds3 )            /* DS III board */
+	MCFG_CPU_MODIFY("ds3xdsp")          /* DS III auxiliary sound DSP has no code */
+	MCFG_DEVICE_DISABLE()
+
+	MCFG_FRAGMENT_ADD( dsk )            /* DSK board */
+MACHINE_CONFIG_END
 
 /* Hard Drivin' Airbourne */
 
@@ -1940,71 +1927,84 @@ void hdrivairp_board_device_state::device_start()
 	harddriv_state::device_start();
 }
 
-const device_type HDRIVAIR_BOARD_DEVICE = &device_creator<hdrivair_board_device_state>;
-const device_type HDRIVAIRP_BOARD_DEVICE = &device_creator<hdrivairp_board_device_state>;
+DEFINE_DEVICE_TYPE(HDRIVAIR_BOARD, hdrivair_board_device_state, "hdrivair_board", "Hard Drivin' Airborne Board Device")
+DEFINE_DEVICE_TYPE(HDRIVAIRP_BOARD, hdrivairp_board_device_state, "hdrivairp_board", "Hard Drivin' Airborne P Board Device")
 
-hdrivair_board_device_state::hdrivair_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: harddriv_state(mconfig, tag, owner, clock)
+hdrivair_board_device_state::hdrivair_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: hdrivair_board_device_state(mconfig, HDRIVAIR_BOARD, tag, owner, clock)
 {
 }
 
-machine_config_constructor hdrivair_board_device_state::device_mconfig_additions() const
+hdrivair_board_device_state::hdrivair_board_device_state(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock)
+	: harddriv_state(mconfig, type, tag, owner, clock)
 {
-	return MACHINE_CONFIG_NAME( hdrivair );
 }
 
+hdrivairp_board_device_state::hdrivairp_board_device_state(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: hdrivair_board_device_state(mconfig, HDRIVAIRP_BOARD, tag, owner, clock)
+{
+}
 
+MACHINE_CONFIG_MEMBER( hdrivair_board_device_state::device_add_mconfig )
 
-static MACHINE_CONFIG_START( harddriv_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", HARDDRIV_BOARD_DEVICE, 0)
+	MCFG_FRAGMENT_ADD( multisync2 )
+
+	/* basic machine hardware */        /* multisync II board */
+	MCFG_FRAGMENT_ADD( ds3 )            /* DS IV board */
+	MCFG_FRAGMENT_ADD( dsk2 )           /* DSK II board */
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( harddrivc_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", HARDDRIVC_BOARD_DEVICE, 0)
+
+static MACHINE_CONFIG_START( harddriv_machine )
+	MCFG_DEVICE_ADD("mainpcb", HARDDRIV_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( racedriv_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", RACEDRIV_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( harddrivc_machine )
+	MCFG_DEVICE_ADD("mainpcb", HARDDRIVC_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( racedrivb1_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", RACEDRIVB1_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( racedriv_machine )
+	MCFG_DEVICE_ADD("mainpcb", RACEDRIV_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( racedrivc_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", RACEDRIVC_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( racedrivb1_machine )
+	MCFG_DEVICE_ADD("mainpcb", RACEDRIVB1_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( racedrivc1_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", RACEDRIVC1_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( racedrivc_machine )
+	MCFG_DEVICE_ADD("mainpcb", RACEDRIVC_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( stunrun_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", STUNRUN_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( racedrivc1_machine )
+	MCFG_DEVICE_ADD("mainpcb", RACEDRIVC1_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( strtdriv_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", STRTDRIV_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( stunrun_machine )
+	MCFG_DEVICE_ADD("mainpcb", STUNRUN_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( hdrivair_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", HDRIVAIR_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( strtdriv_machine )
+	MCFG_DEVICE_ADD("mainpcb", STRTDRIV_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( hdrivairp_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", HDRIVAIRP_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( hdrivair_machine )
+	MCFG_DEVICE_ADD("mainpcb", HDRIVAIR_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( steeltal_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", STEELTAL_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( hdrivairp_machine )
+	MCFG_DEVICE_ADD("mainpcb", HDRIVAIRP_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( steeltal1_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", STEELTAL1_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( steeltal_machine )
+	MCFG_DEVICE_ADD("mainpcb", STEELTAL_BOARD, 0)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( steeltalp_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", STEELTALP_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( steeltal1_machine )
+	MCFG_DEVICE_ADD("mainpcb", STEELTAL1_BOARD, 0)
+MACHINE_CONFIG_END
+
+static MACHINE_CONFIG_START( steeltalp_machine )
+	MCFG_DEVICE_ADD("mainpcb", STEELTALP_BOARD, 0)
 MACHINE_CONFIG_END
 
 WRITE_LINE_MEMBER(harddriv_new_state::tx_a)
@@ -2014,10 +2014,10 @@ WRITE_LINE_MEMBER(harddriv_new_state::tx_a)
 	m_rightpcb->get_duart()->rx_a_w(state);
 }
 
-static MACHINE_CONFIG_START( racedriv_panorama_machine, harddriv_new_state )
-	MCFG_DEVICE_ADD("mainpcb", RACEDRIV_BOARD_DEVICE, 0)
-	MCFG_DEVICE_ADD("leftpcb", RACEDRIVC_PANORAMA_SIDE_BOARD_DEVICE, 0)
-	MCFG_DEVICE_ADD("rightpcb", RACEDRIVC_PANORAMA_SIDE_BOARD_DEVICE, 0)
+static MACHINE_CONFIG_START( racedriv_panorama_machine )
+	MCFG_DEVICE_ADD("mainpcb", RACEDRIV_BOARD, 0)
+	MCFG_DEVICE_ADD("leftpcb", RACEDRIVC_PANORAMA_SIDE_BOARD, 0)
+	MCFG_DEVICE_ADD("rightpcb", RACEDRIVC_PANORAMA_SIDE_BOARD, 0)
 
 //  MCFG_QUANTUM_TIME(attotime::from_hz(100000))
 	MCFG_DEVICE_MODIFY("mainpcb:duartn68681")
@@ -4085,13 +4085,13 @@ ROM_START( racedrivpan )
 	ROM_LOAD16_BYTE( "088-1016.bin", 0x0e0000, 0x010000, CRC(e83a9c99) SHA1(1d4093902133bb6da981f294e6947544c3564393) ) // == 136077-1016.200y
 	ROM_LOAD16_BYTE( "088-1015.bin", 0x0e0001, 0x010000, CRC(725806f3) SHA1(0fa4601465dc94f27c71db789ad625bbcd254169) ) // == 136077-4015.210y
 
-	ROM_REGION( 0x60000, "mainpcb:user1", 0 )       /* 384k for object ROM */
-	ROM_LOAD16_BYTE( "088-1017.bin",  0x00000, 0x10000, CRC(d92251e8) SHA1(deeeec54c4a61c3adf62f6b1b910135559090ee5) )
-	ROM_LOAD16_BYTE( "088-1018.bin",  0x00001, 0x10000, CRC(11a0a8f5) SHA1(d4ccc83fc99331d741bc9b8027ef20d72e3ad71a) )
-	ROM_LOAD16_BYTE( "088-1019.bin",  0x20000, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) ) // == 136091-0019.2k (strtdriv)
-	ROM_LOAD16_BYTE( "088-1020.bin",  0x20001, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) ) // == 136091-0020.2r (strtdriv)
-	ROM_LOAD16_BYTE( "088-1021.bin",  0x40000, 0x10000, CRC(ce8e4886) SHA1(d29cd4761deb80ed179d0e503243739eebc0edb4) )
-	ROM_LOAD16_BYTE( "088-1022.bin",  0x40001, 0x10000, CRC(4f1e1c5d) SHA1(3e72813129cae9e9bf084bfb1b747aa46b92591e) )
+	ROM_REGION16_BE( 0x60000, "mainpcb:user1", 0 )       /* 384k for object ROM */
+	ROM_LOAD16_BYTE( "088-1018.bin",  0x00000, 0x10000, CRC(11a0a8f5) SHA1(d4ccc83fc99331d741bc9b8027ef20d72e3ad71a) )
+	ROM_LOAD16_BYTE( "088-1017.bin",  0x00001, 0x10000, CRC(d92251e8) SHA1(deeeec54c4a61c3adf62f6b1b910135559090ee5) )
+	ROM_LOAD16_BYTE( "088-1020.bin",  0x20000, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) ) // == 136091-0020.2r (strtdriv)
+	ROM_LOAD16_BYTE( "088-1019.bin",  0x20001, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) ) // == 136091-0019.2k (strtdriv)
+	ROM_LOAD16_BYTE( "088-1022.bin",  0x40000, 0x10000, CRC(4f1e1c5d) SHA1(3e72813129cae9e9bf084bfb1b747aa46b92591e) )
+	ROM_LOAD16_BYTE( "088-1021.bin",  0x40001, 0x10000, CRC(ce8e4886) SHA1(d29cd4761deb80ed179d0e503243739eebc0edb4) )
 
 	/* ----------------------- */
 
@@ -4141,13 +4141,13 @@ ROM_START( racedrivpan )
 	ROM_LOAD16_BYTE( "088-2016.bin", 0x0e0000, 0x010000, CRC(6a42b7e2) SHA1(2e0ff4b7e391106a976cb872f6311f6d35dca5b0) )
 	ROM_LOAD16_BYTE( "088-2015.bin", 0x0e0001, 0x010000, CRC(334e2a3b) SHA1(a19bfa7652845b9453c722091c773819ba248569) )
 
-	ROM_REGION( 0x60000, "leftpcb:user1", 0 )       /* 384k for object ROM */
-	ROM_LOAD16_BYTE( "088-1017.bin",  0x00000, 0x10000, CRC(d92251e8) SHA1(deeeec54c4a61c3adf62f6b1b910135559090ee5) )
-	ROM_LOAD16_BYTE( "088-1018.bin",  0x00001, 0x10000, CRC(11a0a8f5) SHA1(d4ccc83fc99331d741bc9b8027ef20d72e3ad71a) )
-	ROM_LOAD16_BYTE( "088-1019.bin",  0x20000, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) ) // == 136091-0019.2k (strtdriv)
-	ROM_LOAD16_BYTE( "088-1020.bin",  0x20001, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) ) // == 136091-0020.2r (strtdriv)
-	ROM_LOAD16_BYTE( "088-1021.bin",  0x40000, 0x10000, CRC(ce8e4886) SHA1(d29cd4761deb80ed179d0e503243739eebc0edb4) )
-	ROM_LOAD16_BYTE( "088-1022.bin",  0x40001, 0x10000, CRC(4f1e1c5d) SHA1(3e72813129cae9e9bf084bfb1b747aa46b92591e) )
+	ROM_REGION16_BE( 0x60000, "leftpcb:user1", 0 )       /* 384k for object ROM */
+	ROM_LOAD16_BYTE( "088-1018.bin",  0x00000, 0x10000, CRC(11a0a8f5) SHA1(d4ccc83fc99331d741bc9b8027ef20d72e3ad71a) )
+	ROM_LOAD16_BYTE( "088-1017.bin",  0x00001, 0x10000, CRC(d92251e8) SHA1(deeeec54c4a61c3adf62f6b1b910135559090ee5) )
+	ROM_LOAD16_BYTE( "088-1020.bin",  0x20000, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) ) // == 136091-0020.2r (strtdriv)
+	ROM_LOAD16_BYTE( "088-1019.bin",  0x20001, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) ) // == 136091-0019.2k (strtdriv)
+	ROM_LOAD16_BYTE( "088-1022.bin",  0x40000, 0x10000, CRC(4f1e1c5d) SHA1(3e72813129cae9e9bf084bfb1b747aa46b92591e) )
+	ROM_LOAD16_BYTE( "088-1021.bin",  0x40001, 0x10000, CRC(ce8e4886) SHA1(d29cd4761deb80ed179d0e503243739eebc0edb4) )
 
 	ROM_REGION( 0x800, "leftpcb:200e", 0 ) // set to display left monitor, controls not calibrated with valid values (don't think they need to be)
 	ROM_LOAD( "leftpcb_200e",   0x000000, 0x000800, CRC(a618d02e) SHA1(cc1068fe4f6ec9a26b6e8fdbe05f4364a64559c1) )
@@ -4173,13 +4173,13 @@ ROM_START( racedrivpan )
 	ROM_LOAD16_BYTE( "088-2016.bin", 0x0e0000, 0x010000, CRC(6a42b7e2) SHA1(2e0ff4b7e391106a976cb872f6311f6d35dca5b0) )
 	ROM_LOAD16_BYTE( "088-2015.bin", 0x0e0001, 0x010000, CRC(334e2a3b) SHA1(a19bfa7652845b9453c722091c773819ba248569) )
 
-	ROM_REGION( 0x60000, "rightpcb:user1", 0 )       /* 384k for object ROM */
-	ROM_LOAD16_BYTE( "088-1017.bin",  0x00000, 0x10000, CRC(d92251e8) SHA1(deeeec54c4a61c3adf62f6b1b910135559090ee5) )
-	ROM_LOAD16_BYTE( "088-1018.bin",  0x00001, 0x10000, CRC(11a0a8f5) SHA1(d4ccc83fc99331d741bc9b8027ef20d72e3ad71a) )
-	ROM_LOAD16_BYTE( "088-1019.bin",  0x20000, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) ) // == 136091-0019.2k (strtdriv)
-	ROM_LOAD16_BYTE( "088-1020.bin",  0x20001, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) ) // == 136091-0020.2r (strtdriv)
-	ROM_LOAD16_BYTE( "088-1021.bin",  0x40000, 0x10000, CRC(ce8e4886) SHA1(d29cd4761deb80ed179d0e503243739eebc0edb4) )
-	ROM_LOAD16_BYTE( "088-1022.bin",  0x40001, 0x10000, CRC(4f1e1c5d) SHA1(3e72813129cae9e9bf084bfb1b747aa46b92591e) )
+	ROM_REGION16_BE( 0x60000, "rightpcb:user1", 0 )       /* 384k for object ROM */
+	ROM_LOAD16_BYTE( "088-1018.bin",  0x00000, 0x10000, CRC(11a0a8f5) SHA1(d4ccc83fc99331d741bc9b8027ef20d72e3ad71a) )
+	ROM_LOAD16_BYTE( "088-1017.bin",  0x00001, 0x10000, CRC(d92251e8) SHA1(deeeec54c4a61c3adf62f6b1b910135559090ee5) )
+	ROM_LOAD16_BYTE( "088-1020.bin",  0x20000, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) ) // == 136091-0020.2r (strtdriv)
+	ROM_LOAD16_BYTE( "088-1019.bin",  0x20001, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) ) // == 136091-0019.2k (strtdriv)
+	ROM_LOAD16_BYTE( "088-1022.bin",  0x40000, 0x10000, CRC(4f1e1c5d) SHA1(3e72813129cae9e9bf084bfb1b747aa46b92591e) )
+	ROM_LOAD16_BYTE( "088-1021.bin",  0x40001, 0x10000, CRC(ce8e4886) SHA1(d29cd4761deb80ed179d0e503243739eebc0edb4) )
 
 	ROM_REGION( 0x800, "rightpcb:200e", 0 ) // set to display right monitor, controls not calibrated with valid values (don't think they need to be)
 	ROM_LOAD( "rightpcb_200e",   0x000000, 0x000800, CRC(6f1b7094) SHA1(6194a5b99aebe43f02c8d267290207b32c5bdbbd) )
@@ -4462,13 +4462,13 @@ ROM_START( strtdriv )
 	ROM_REGION( 0x10000 + 0x10000, "mainpcb:asic65:asic65cpu", 0 )    /* dummy region for ADSP 2105 */
 	ROM_LOAD( "136091-0033.10j", 0x000000, 0x010000, CRC(57504ab6) SHA1(ec8361b7da964c07ca0da48a87537badc3986fe0) )
 
-	ROM_REGION( 0x60000, "mainpcb:user1", 0 )       /* 384k for object ROM */
-	ROM_LOAD16_BYTE( "136091-0017.2lm", 0x00000, 0x10000, CRC(b0454074) SHA1(9530ea1ef215116da1f0843776fa7a6b4637049d) )
-	ROM_LOAD16_BYTE( "136091-0018.2t",  0x00001, 0x10000, CRC(ef432aa8) SHA1(56bce13c111db7874c9b669d479f6ef47976ee14) )
-	ROM_LOAD16_BYTE( "136091-0019.2k",  0x20000, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) )
-	ROM_LOAD16_BYTE( "136091-0020.2r",  0x20001, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) )
-	ROM_LOAD16_BYTE( "136091-0021.2j",  0x40000, 0x10000, CRC(14f2caae) SHA1(ff40dbced58dc910a2b5825b846a5e52933cb8fc) )
-	ROM_LOAD16_BYTE( "136091-0022.2p",  0x40001, 0x10000, CRC(bc4dd071) SHA1(ca182451a0a18d343dce1be56090d51950d43906) )
+	ROM_REGION16_BE( 0x60000, "mainpcb:user1", 0 )       /* 384k for object ROM */
+	ROM_LOAD16_BYTE( "136091-0018.2t",  0x00000, 0x10000, CRC(ef432aa8) SHA1(56bce13c111db7874c9b669d479f6ef47976ee14) )
+	ROM_LOAD16_BYTE( "136091-0017.2lm", 0x00001, 0x10000, CRC(b0454074) SHA1(9530ea1ef215116da1f0843776fa7a6b4637049d) )
+	ROM_LOAD16_BYTE( "136091-0020.2r",  0x20000, 0x10000, CRC(311cef99) SHA1(9c466aabad7e80581e477253ec6f2fd245f9b9fd) )
+	ROM_LOAD16_BYTE( "136091-0019.2k",  0x20001, 0x10000, CRC(5bb00676) SHA1(cad1cea8e43f9590fc71c00fab4eff0d447f9296) )
+	ROM_LOAD16_BYTE( "136091-0022.2p",  0x40000, 0x10000, CRC(bc4dd071) SHA1(ca182451a0a18d343dce1be56090d51950d43906) )
+	ROM_LOAD16_BYTE( "136091-0021.2j",  0x40001, 0x10000, CRC(14f2caae) SHA1(ff40dbced58dc910a2b5825b846a5e52933cb8fc) )
 
 	ROM_REGION16_BE( 0x50000, "mainpcb:user3", 0 )  /* 256k for DSK ROMs + 64k for RAM */
 	ROM_LOAD16_BYTE( "136091-0026.30e", 0x000000, 0x020000, CRC(47705109) SHA1(fa40275b71b74be8591282d2fba4215b98fc29c9) )
@@ -4518,13 +4518,13 @@ ROM_START( hdrivair )
 	ROM_REGION( 0x10000 + 0x10000, "mainpcb:asic65:asic65cpu", 0 )    /* dummy region for ADSP 2105 */
 	ROM_LOAD( "sboot.bin", 0x000000, 0x010000, CRC(cde4d010) SHA1(853f4b813ff70fe74cd87e92131c46fca045610d) )
 
-	ROM_REGION( 0xc0000, "mainpcb:user1", 0 )       /* 768k for object ROM */
-	ROM_LOAD16_BYTE( "obj0l.bin",   0x00000, 0x20000, CRC(1f835f2e) SHA1(9d3419f2c1aa65ddfe9ace4e70ca1212d634afbf) )
-	ROM_LOAD16_BYTE( "obj0h.bin",   0x00001, 0x20000, CRC(c321ab55) SHA1(e095e40bb1ebda7c9ff04a5086c10ab41dec2f16) )
-	ROM_LOAD16_BYTE( "obj1l.bin",   0x40000, 0x20000, CRC(3d65f264) SHA1(e9232f5bf439bf4e1cf99cc7e81b7f9550563f15) )
-	ROM_LOAD16_BYTE( "obj1h.bin",   0x40001, 0x20000, CRC(2c06b708) SHA1(daa16f727f2f500172f88b69d6931aa0fa13641b) )
-	ROM_LOAD16_BYTE( "obj2l.bin",   0x80000, 0x20000, CRC(b206cc7e) SHA1(17f05e906c41b804fe99dd6cd8acbade919a6a10) )
-	ROM_LOAD16_BYTE( "obj2h.bin",   0x80001, 0x20000, CRC(a666e98c) SHA1(90e380ff87538c7d557cf005a4a5bcedc250eb72) )
+	ROM_REGION16_BE( 0xc0000, "mainpcb:user1", 0 )       /* 768k for object ROM */
+	ROM_LOAD16_BYTE( "obj0h.bin",   0x00000, 0x20000, CRC(c321ab55) SHA1(e095e40bb1ebda7c9ff04a5086c10ab41dec2f16) )
+	ROM_LOAD16_BYTE( "obj0l.bin",   0x00001, 0x20000, CRC(1f835f2e) SHA1(9d3419f2c1aa65ddfe9ace4e70ca1212d634afbf) )
+	ROM_LOAD16_BYTE( "obj1h.bin",   0x40000, 0x20000, CRC(2c06b708) SHA1(daa16f727f2f500172f88b69d6931aa0fa13641b) )
+	ROM_LOAD16_BYTE( "obj1l.bin",   0x40001, 0x20000, CRC(3d65f264) SHA1(e9232f5bf439bf4e1cf99cc7e81b7f9550563f15) )
+	ROM_LOAD16_BYTE( "obj2h.bin",   0x80000, 0x20000, CRC(a666e98c) SHA1(90e380ff87538c7d557cf005a4a5bcedc250eb72) )
+	ROM_LOAD16_BYTE( "obj2l.bin",   0x80001, 0x20000, CRC(b206cc7e) SHA1(17f05e906c41b804fe99dd6cd8acbade919a6a10) )
 
 	ROM_REGION16_BE( 0x140000, "mainpcb:user3", 0 )/* 1MB for DSK ROMs + 256k for RAM */
 	ROM_LOAD16_BYTE( "dsk2phi.bin", 0x00000, 0x80000, CRC(71c268e0) SHA1(c089248a7dfadf2eba3134fe40ebb777c115a886) )
@@ -4581,13 +4581,13 @@ ROM_START( hdrivairp )
 	ROM_REGION( 0x10000 + 0x10000, "mainpcb:asic65:asic65cpu", 0 )    /* dummy region for ADSP 2105 */
 	ROM_LOAD( "xboota.bin", 0x10000 + 0x00000, 0x10000, CRC(d9c49901) SHA1(9f90ae3a47eb1ef00c3ec3661f60402c2eae2108) )
 
-	ROM_REGION( 0xc0000, "mainpcb:user1", 0 )       /* 768k for object ROM */
-	ROM_LOAD16_BYTE( "objects.0l",  0x00000, 0x20000, CRC(3c9e9078) SHA1(f1daf32117236401f3cb97f332708632003e55f8) )
-	ROM_LOAD16_BYTE( "objects.0h",  0x00001, 0x20000, CRC(4480dbae) SHA1(6a455173c38e80093f58bdc322cffcf25e70b6ae) )
-	ROM_LOAD16_BYTE( "objects.1l",  0x40000, 0x20000, CRC(700bd978) SHA1(5cd63d4eee00d90fe29fb9697b6a0ea6b86704ae) )
-	ROM_LOAD16_BYTE( "objects.1h",  0x40001, 0x20000, CRC(f613adaf) SHA1(9b9456e144a48fb73c5e084b33345667eed4905e) )
-	ROM_LOAD16_BYTE( "objects.2l",  0x80000, 0x20000, CRC(e3b512f0) SHA1(080c5a21cb76edcb55d1c2488e9d91cf29cb0665) )
-	ROM_LOAD16_BYTE( "objects.2h",  0x80001, 0x20000, CRC(3f83742b) SHA1(4b6e0134a806bcc9bd56432737047f86d0a16424) )
+	ROM_REGION16_BE( 0xc0000, "mainpcb:user1", 0 )       /* 768k for object ROM */
+	ROM_LOAD16_BYTE( "objects.0h",  0x00000, 0x20000, CRC(4480dbae) SHA1(6a455173c38e80093f58bdc322cffcf25e70b6ae) )
+	ROM_LOAD16_BYTE( "objects.0l",  0x00001, 0x20000, CRC(3c9e9078) SHA1(f1daf32117236401f3cb97f332708632003e55f8) )
+	ROM_LOAD16_BYTE( "objects.1h",  0x40000, 0x20000, CRC(f613adaf) SHA1(9b9456e144a48fb73c5e084b33345667eed4905e) )
+	ROM_LOAD16_BYTE( "objects.1l",  0x40001, 0x20000, CRC(700bd978) SHA1(5cd63d4eee00d90fe29fb9697b6a0ea6b86704ae) )
+	ROM_LOAD16_BYTE( "objects.2h",  0x80000, 0x20000, CRC(3f83742b) SHA1(4b6e0134a806bcc9bd56432737047f86d0a16424) )
+	ROM_LOAD16_BYTE( "objects.2l",  0x80001, 0x20000, CRC(e3b512f0) SHA1(080c5a21cb76edcb55d1c2488e9d91cf29cb0665) )
 
 	ROM_REGION16_BE( 0x140000, "mainpcb:user3", 0 )/* 1MB for DSK ROMs + 256k for RAM */
 	ROM_LOAD16_BYTE( "dskpics.hi",  0x00000, 0x80000, CRC(eaa88101) SHA1(ed0ebf8a9a9514d810242b9b552126f6717f9e25) )
@@ -4634,7 +4634,7 @@ ROM_END
 void harddriv_state::init_driver()
 {
 	/* note that we're not multisync */
-	m_gsp_multisync = FALSE;
+	m_gsp_multisync = false;
 }
 
 
@@ -4642,7 +4642,7 @@ void harddriv_state::init_driver()
 void harddriv_state::init_multisync(int compact_inputs)
 {
 	/* note that we're multisync */
-	m_gsp_multisync = TRUE;
+	m_gsp_multisync = true;
 
 	// if we have a JSA board, install the read/write handlers
 	if (m_jsa.found())
@@ -4699,8 +4699,12 @@ void harddriv_state::init_ds3()
 	m_maincpu->space(AS_PROGRAM).install_write_handler(0x823000, 0x8237ff, write16_delegate(FUNC(harddriv_state::hd68k_ds3_sirq_clear_w), this));
 	m_maincpu->space(AS_PROGRAM).install_write_handler(0x823800, 0x823fff, write16_delegate(FUNC(harddriv_state::hd68k_ds3_control_w), this));
 
-	/* predetermine memory regions */
-	m_ds3_sdata_memory_size = m_ds3_sdata_memory.bytes() / 2;
+	/* predetermine memory regions, can't use a region_ptr because strtdriv expects uint8_t while hdrivair expects uint16_t, also need to check if region exists for steeltal*/
+	if (memregion("ds3sdsp_data") != nullptr)
+	{
+		m_ds3_sdata_memory = (uint16_t *)memregion("ds3sdsp_data")->base();
+		m_ds3_sdata_memory_size = memregion("ds3sdsp_data")->bytes() / 2;
+	}
 /*
 
 
@@ -4773,7 +4777,7 @@ void harddriv_state::init_ds3()
 /* COMMON INIT: initialize the DSK add-on board */
 void harddriv_state::init_dsk()
 {
-	UINT8 *usr3 = memregion("user3")->base();
+	uint8_t *usr3 = memregion("user3")->base();
 
 	/* install ASIC61 */
 	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x85c000, 0x85c7ff, read16_delegate(FUNC(harddriv_state::hd68k_dsk_dsp32_r), this), write16_delegate(FUNC(harddriv_state::hd68k_dsk_dsp32_w), this));
@@ -4783,7 +4787,7 @@ void harddriv_state::init_dsk()
 
 	/* install extra RAM */
 	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x900000, 0x90ffff, read16_delegate(FUNC(harddriv_state::hd68k_dsk_ram_r), this), write16_delegate(FUNC(harddriv_state::hd68k_dsk_ram_w), this));
-	m_dsk_ram = (UINT16 *)(usr3 + 0x40000);
+	m_dsk_ram = (uint16_t *)(usr3 + 0x40000);
 
 	/* install extra ZRAM */
 	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x910000, 0x910fff, read8_delegate(FUNC(eeprom_parallel_28xx_device::read), m_dsk_10c.target()), write8_delegate(FUNC(eeprom_parallel_28xx_device::write), m_dsk_10c.target()), 0xff00);
@@ -4796,14 +4800,14 @@ void harddriv_state::init_dsk()
 
 	/* install extra ROM */
 	m_maincpu->space(AS_PROGRAM).install_read_handler(0x940000, 0x9fffff, read16_delegate(FUNC(harddriv_state::hd68k_dsk_small_rom_r), this));
-	m_dsk_rom = (UINT16 *)(usr3 + 0x00000);
+	m_dsk_rom = (uint16_t *)(usr3 + 0x00000);
 }
 
 
 /* COMMON INIT: initialize the DSK II add-on board */
 void harddriv_state::init_dsk2()
 {
-	UINT8 *usr3 = memregion("user3")->base();
+	uint8_t *usr3 = memregion("user3")->base();
 
 	/* install ASIC65 */
 	m_maincpu->space(AS_PROGRAM).install_write_handler(0x824000, 0x824003, write16_delegate(FUNC(asic65_device::data_w), (asic65_device*)m_asic65));
@@ -4818,11 +4822,11 @@ void harddriv_state::init_dsk2()
 
 	/* install extra RAM */
 	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0x880000, 0x8bffff, read16_delegate(FUNC(harddriv_state::hd68k_dsk_ram_r), this), write16_delegate(FUNC(harddriv_state::hd68k_dsk_ram_w), this));
-	m_dsk_ram = (UINT16 *)(usr3 + 0x100000);
+	m_dsk_ram = (uint16_t *)(usr3 + 0x100000);
 
 	/* install extra ROM */
 	m_maincpu->space(AS_PROGRAM).install_read_handler(0x900000, 0x9fffff, read16_delegate(FUNC(harddriv_state::hd68k_dsk_rom_r), this));
-	m_dsk_rom = (UINT16 *)(usr3 + 0x000000);
+	m_dsk_rom = (uint16_t *)(usr3 + 0x000000);
 }
 
 
@@ -4865,15 +4869,18 @@ void harddriv_state::init_harddriv(void)
 	init_driver_sound();
 
 	/* set up gsp speedup handler */
-	m_gsp_speedup_addr[0] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff9fc00, 0xfff9fc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup1_w), this));
-	m_gsp_speedup_addr[1] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfffcfc00, 0xfffcfc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup2_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff9fc00, 0xfff9fc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup1_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfffcfc00, 0xfffcfc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup2_w), this));
 	m_gsp->space(AS_PROGRAM).install_read_handler(0xfff9fc00, 0xfff9fc0f, read16_delegate(FUNC(harddriv_state::hdgsp_speedup_r), this));
 	m_gsp_speedup_pc = 0xffc00f10;
+	m_gsp_speedup_addr[0] = (uint16_t *)(m_gsp_vram + ((0xfff9fc00 - 0xff800000) >> 3)); // Addresses are in bits. Really.
+	m_gsp_speedup_addr[1] = (uint16_t *)(m_gsp_vram + ((0xfffcfc00 - 0xff800000) >> 3));
 
 	/* set up msp speedup handler */
-	m_msp_speedup_addr = m_msp->space(AS_PROGRAM).install_write_handler(0x00751b00, 0x00751b0f, write16_delegate(FUNC(harddriv_state::hdmsp_speedup_w), this));
+	m_msp->space(AS_PROGRAM).install_write_handler(0x00751b00, 0x00751b0f, write16_delegate(FUNC(harddriv_state::hdmsp_speedup_w), this));
 	m_msp->space(AS_PROGRAM).install_read_handler(0x00751b00, 0x00751b0f, read16_delegate(FUNC(harddriv_state::hdmsp_speedup_r), this));
 	m_msp_speedup_pc = 0x00723b00;
+	m_msp_speedup_addr = m_msp_ram + ((0x751b00 - 0x700000) >> 4); // Address in bits, plus uint16_t *
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -4888,15 +4895,18 @@ void harddriv_state::init_harddrivc(void)
 	init_driver_sound();
 
 	/* set up gsp speedup handler */
-	m_gsp_speedup_addr[0] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff9fc00, 0xfff9fc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup1_w), this));
-	m_gsp_speedup_addr[1] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfffcfc00, 0xfffcfc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup2_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff9fc00, 0xfff9fc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup1_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfffcfc00, 0xfffcfc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup2_w), this));
 	m_gsp->space(AS_PROGRAM).install_read_handler(0xfff9fc00, 0xfff9fc0f, read16_delegate(FUNC(harddriv_state::hdgsp_speedup_r), this));
 	m_gsp_speedup_pc = 0xfff40ff0;
+	m_gsp_speedup_addr[0] = (uint16_t *)(m_gsp_vram + ((0xfff9fc00 - 0xffc00000) >> 3)); // Addresses are in bits. Really.
+	m_gsp_speedup_addr[1] = (uint16_t *)(m_gsp_vram + ((0xfffcfc00 - 0xffc00000) >> 3));
 
 	/* set up msp speedup handler */
-	m_msp_speedup_addr = m_msp->space(AS_PROGRAM).install_write_handler(0x00751b00, 0x00751b0f, write16_delegate(FUNC(harddriv_state::hdmsp_speedup_w), this));
+	m_msp->space(AS_PROGRAM).install_write_handler(0x00751b00, 0x00751b0f, write16_delegate(FUNC(harddriv_state::hdmsp_speedup_w), this));
 	m_msp->space(AS_PROGRAM).install_read_handler(0x00751b00, 0x00751b0f, read16_delegate(FUNC(harddriv_state::hdmsp_speedup_r), this));
 	m_msp_speedup_pc = 0x00723b00;
+	m_msp_speedup_addr = m_msp_ram + ((0x751b00 - 0x700000) >> 4); // Address in bits, plus uint16_t *
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -4910,10 +4920,12 @@ void harddriv_state::init_stunrun(void)
 	init_adsp();
 
 	/* set up gsp speedup handler */
-	m_gsp_speedup_addr[0] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff9fc00, 0xfff9fc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup1_w), this));
-	m_gsp_speedup_addr[1] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfffcfc00, 0xfffcfc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup2_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff9fc00, 0xfff9fc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup1_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfffcfc00, 0xfffcfc0f, write16_delegate(FUNC(harddriv_state::hdgsp_speedup2_w), this));
 	m_gsp->space(AS_PROGRAM).install_read_handler(0xfff9fc00, 0xfff9fc0f, read16_delegate(FUNC(harddriv_state::hdgsp_speedup_r), this));
 	m_gsp_speedup_pc = 0xfff41070;
+	m_gsp_speedup_addr[0] = (uint16_t *)(m_gsp_vram + ((0xfff9fc00 - 0xffc00000) >> 3)); // Addresses are in bits. Really.
+	m_gsp_speedup_addr[1] = (uint16_t *)(m_gsp_vram + ((0xfffcfc00 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -4930,14 +4942,18 @@ void harddriv_state::init_racedriv(void)
 
 	/* set up the slapstic */
 	m_slapstic_device->slapstic_init();
-	m_m68k_slapstic_base = m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_m68k_slapstic_base = (uint16_t *)(memregion("maincpu")->base() + 0xe0000);
 
 	/* synchronization */
-	m_rddsp32_sync[0] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
-	m_rddsp32_sync[1] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_rddsp32_sync[0] = m_dsp32_ram + ((0x613c00 - 0x600000) >> 2);
+	m_rddsp32_sync[1] = m_dsp32_ram + ((0x613e00 - 0x600000) >> 2);
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
+
 }
 
 
@@ -4951,19 +4967,24 @@ void harddriv_state::racedrivc_init_common(offs_t gsp_protection)
 
 	/* set up the slapstic */
 	m_slapstic_device->slapstic_init();
-	m_m68k_slapstic_base = m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_m68k_slapstic_base = (uint16_t *)(memregion("maincpu")->base() + 0xe0000);
 
 	/* synchronization */
-	m_rddsp32_sync[0] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
-	m_rddsp32_sync[1] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_rddsp32_sync[0] = m_dsp32_ram + ((0x613c00 - 0x600000) >> 2);
+	m_rddsp32_sync[1] = m_dsp32_ram + ((0x613e00 - 0x600000) >> 2);
 
 	/* set up protection hacks */
-	m_gsp_protection = m_gsp->space(AS_PROGRAM).install_write_handler(gsp_protection, gsp_protection + 0x0f, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(gsp_protection, gsp_protection + 0x0f, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp_protection = (uint16_t *)(m_gsp_vram + ((gsp_protection - 0xffc00000) >> 3));
 
 	/* set up gsp speedup handler */
-	m_gsp_speedup_addr[0] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff76f60, 0xfff76f6f, write16_delegate(FUNC(harddriv_state::rdgsp_speedup1_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff76f60, 0xfff76f6f, write16_delegate(FUNC(harddriv_state::rdgsp_speedup1_w), this));
 	m_gsp->space(AS_PROGRAM).install_read_handler(0xfff76f60, 0xfff76f6f, read16_delegate(FUNC(harddriv_state::rdgsp_speedup1_r), this));
 	m_gsp_speedup_pc = 0xfff43a00;
+	m_gsp_speedup_addr[0] = (uint16_t *)(m_gsp_vram + ((0xfff76f60 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -4981,15 +5002,18 @@ void harddriv_state::init_racedrivc_panorama_side()
 
 	/* set up the slapstic */
 	m_slapstic_device->slapstic_init();
-	m_m68k_slapstic_base = m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_m68k_slapstic_base = (uint16_t *)(memregion("maincpu")->base() + 0xe0000);
 
 	/* set up protection hacks */
-	m_gsp_protection = m_gsp->space(AS_PROGRAM).install_write_handler(gsp_protection, gsp_protection + 0x0f, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(gsp_protection, gsp_protection + 0x0f, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp_protection = (uint16_t *)(m_gsp_vram + ((gsp_protection - 0xffc00000) >> 3));
 
 	/* set up gsp speedup handler (todo, work these out) */
-//  m_gsp_speedup_addr[0] = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff76f60, 0xfff76f6f, write16_delegate(FUNC(harddriv_state::rdgsp_speedup1_w), this));
+//  m_gsp->space(AS_PROGRAM).install_write_handler(0xfff76f60, 0xfff76f6f, write16_delegate(FUNC(harddriv_state::rdgsp_speedup1_w), this));
 //  m_gsp->space(AS_PROGRAM).install_read_handler(0xfff76f60, 0xfff76f6f, read16_delegate(FUNC(harddriv_state::rdgsp_speedup1_r), this));
 //  m_gsp_speedup_pc = 0xfff43a00;
+//  m_gsp_speedup_addr[0] = (uint16_t *)(m_gsp_vram + ((0xfff76f60 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -5013,7 +5037,7 @@ READ32_MEMBER(harddriv_state::rddsp_unmap_r)
 
 READ16_MEMBER(harddriv_state::steeltal_dummy_r)
 {
-	/* this is required so that INT 4 is recongized as a sound INT */
+	/* this is required so that INT 4 is recognized as a sound INT */
 	return ~0;
 }
 
@@ -5030,14 +5054,18 @@ void harddriv_state::steeltal_init_common(offs_t ds3_transfer_pc, int proto_sloo
 	/* set up the SLOOP */
 	if (!proto_sloop)
 	{
-		m_m68k_slapstic_base = m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::st68k_sloop_r), this),  write16_delegate(FUNC(harddriv_state::st68k_sloop_w), this));
-		m_m68k_sloop_alt_base = m_maincpu->space(AS_PROGRAM).install_read_handler(0x4e000, 0x4ffff, read16_delegate(FUNC(harddriv_state::st68k_sloop_alt_r), this));
+		m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::st68k_sloop_r), this),  write16_delegate(FUNC(harddriv_state::st68k_sloop_w), this));
+		m_maincpu->space(AS_PROGRAM).install_read_handler(0x4e000, 0x4ffff, read16_delegate(FUNC(harddriv_state::st68k_sloop_alt_r), this));
 	}
 	else
-		m_m68k_slapstic_base = m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::st68k_protosloop_r), this), write16_delegate(FUNC(harddriv_state::st68k_protosloop_w), this));
+		m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::st68k_protosloop_r), this), write16_delegate(FUNC(harddriv_state::st68k_protosloop_w), this));
+
+	m_m68k_slapstic_base = (uint16_t *)(memregion("maincpu")->base() + 0xe0000);
+	m_m68k_sloop_alt_base = (uint16_t *)(memregion("maincpu")->base() + 0x4e000);
 
 	/* set up protection hacks */
-	m_gsp_protection = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff965d0, 0xfff965df, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff965d0, 0xfff965df, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp_protection = (uint16_t *)(m_gsp_vram + ((0xfff965d0 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -5046,6 +5074,7 @@ void harddriv_state::steeltal_init_common(offs_t ds3_transfer_pc, int proto_sloo
 	m_ds3_speedup_pc = 0xff;
 	m_ds3_transfer_pc = ds3_transfer_pc;
 }
+
 
 
 void harddriv_state::init_steeltal(void)
@@ -5073,16 +5102,20 @@ void harddriv_state::init_strtdriv(void)
 
 	/* set up the slapstic */
 	m_slapstic_device->slapstic_init();
-	m_m68k_slapstic_base = m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xe0000, 0xfffff, read16_delegate(FUNC(harddriv_state::rd68k_slapstic_r), this), write16_delegate(FUNC(harddriv_state::rd68k_slapstic_w), this));
+	m_m68k_slapstic_base = (uint16_t *)(memregion("maincpu")->base() + 0xe0000);
 
 	m_maincpu->space(AS_PROGRAM).install_read_handler(0xa80000, 0xafffff, read16_delegate(FUNC(harddriv_state::hda68k_port1_r), this));
 
 	/* synchronization */
-	m_rddsp32_sync[0] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
-	m_rddsp32_sync[1] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_rddsp32_sync[0] = m_dsp32_ram + ((0x613c00 - 0x600000) >> 2);
+	m_rddsp32_sync[1] = m_dsp32_ram + ((0x613e00 - 0x600000) >> 2);
 
 	/* set up protection hacks */
-	m_gsp_protection = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff960a0, 0xfff960af, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff960a0, 0xfff960af, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp_protection = (uint16_t *)(m_gsp_vram + ((0xfff960a0 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -5103,11 +5136,14 @@ void harddriv_state::init_hdrivair(void)
 	m_maincpu->space(AS_PROGRAM).install_read_handler(0xa80000, 0xafffff, read16_delegate(FUNC(harddriv_state::hda68k_port1_r), this));
 
 	/* synchronization */
-	m_rddsp32_sync[0] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
-	m_rddsp32_sync[1] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_rddsp32_sync[0] = m_dsp32_ram + ((0x613c00 - 0x600000) >> 2);
+	m_rddsp32_sync[1] = m_dsp32_ram + ((0x613e00 - 0x600000) >> 2);
 
 	/* set up protection hacks */
-	m_gsp_protection = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff960a0, 0xfff960af, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff960a0, 0xfff960af, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp_protection = (uint16_t *)(m_gsp_vram + ((0xfff960a0 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
@@ -5128,18 +5164,21 @@ void harddriv_state::init_hdrivairp(void)
 	m_maincpu->space(AS_PROGRAM).install_read_handler(0xa80000, 0xafffff, read16_delegate(FUNC(harddriv_state::hda68k_port1_r), this));
 
 	/* synchronization */
-	m_rddsp32_sync[0] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
-	m_rddsp32_sync[1] = m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613c00, 0x613c03, write32_delegate(FUNC(harddriv_state::rddsp32_sync0_w), this));
+	m_dsp32->space(AS_PROGRAM).install_write_handler(0x613e00, 0x613e03, write32_delegate(FUNC(harddriv_state::rddsp32_sync1_w), this));
+	m_rddsp32_sync[0] = m_dsp32_ram + ((0x613c00 - 0x600000) >> 2);
+	m_rddsp32_sync[1] = m_dsp32_ram + ((0x613e00 - 0x600000) >> 2);
 
 	/* set up protection hacks */
-	m_gsp_protection = m_gsp->space(AS_PROGRAM).install_write_handler(0xfff916c0, 0xfff916cf, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp->space(AS_PROGRAM).install_write_handler(0xfff916c0, 0xfff916cf, write16_delegate(FUNC(harddriv_state::hdgsp_protection_w), this));
+	m_gsp_protection = (uint16_t *)(m_gsp_vram + ((0xfff916c0 - 0xffc00000) >> 3));
 
 	/* set up adsp speedup handlers */
 	m_adsp->space(AS_DATA).install_read_handler(0x1fff, 0x1fff, read16_delegate(FUNC(harddriv_state::hdadsp_speedup_r), this));
 	m_adsp->space(AS_DATA).install_read_handler(0x1f9a, 0x1f9a, read16_delegate(FUNC(harddriv_state::hdds3_speedup_r), this));
 	m_ds3_speedup_addr = &m_adsp_data_memory[0x1f9a];
 	m_ds3_speedup_pc = 0x2d9;
-	m_ds3_transfer_pc = 0X407da;
+	m_ds3_transfer_pc = 0x407da;
 }
 
 
@@ -5149,64 +5188,64 @@ void harddriv_state::init_hdrivairp(void)
  *
  *************************************/
 
-GAME( 1988, harddriv,   0,        harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 7)", 0 )
-GAME( 1988, harddrivb,  harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, British, rev 7)", 0 )
-GAME( 1988, harddrivg,  harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, German, rev 7)", 0 )
-GAME( 1988, harddrivj,  harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, Japan, rev 7)", 0 )
-GAME( 1988, harddrivb6, harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, British, rev 6)", 0 )
-GAME( 1988, harddrivj6, harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, Japan, rev 6)", 0 )
-GAME( 1988, harddrivb5, harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, British, rev 5)", 0 )
-GAME( 1988, harddrivg4, harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, German, rev 4)", 0 )
-GAME( 1988, harddriv3,  harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 3)", 0 )
-GAME( 1988, harddriv2,  harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 2)", 0 )
-GAME( 1988, harddriv1,  harddriv, harddriv_machine, harddriv, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 1)", 0 )
+GAME( 1988, harddriv,     0,        harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 7)", 0 )
+GAME( 1988, harddrivb,    harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, British, rev 7)", 0 )
+GAME( 1988, harddrivg,    harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, German, rev 7)", 0 )
+GAME( 1988, harddrivj,    harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, Japan, rev 7)", 0 )
+GAME( 1988, harddrivb6,   harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, British, rev 6)", 0 )
+GAME( 1988, harddrivj6,   harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, Japan, rev 6)", 0 )
+GAME( 1988, harddrivb5,   harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, British, rev 5)", 0 )
+GAME( 1988, harddrivg4,   harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, German, rev 4)", 0 )
+GAME( 1988, harddriv3,    harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 3)", 0 )
+GAME( 1988, harddriv2,    harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 2)", 0 )
+GAME( 1988, harddriv1,    harddriv, harddriv_machine,   harddriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (cockpit, rev 1)", 0 )
 
-GAME( 1990, harddrivc,  harddriv, harddrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (compact, rev 2)", 0 )
-GAME( 1990, harddrivcg, harddriv, harddrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (compact, German, rev 2)", 0 )
-GAME( 1990, harddrivcb, harddriv, harddrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (compact, British, rev 2)", 0 )
-GAME( 1990, harddrivc1, harddriv, harddrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Hard Drivin' (compact, rev 1)", 0 )
+GAME( 1990, harddrivc,    harddriv, harddrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (compact, rev 2)", 0 )
+GAME( 1990, harddrivcg,   harddriv, harddrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (compact, German, rev 2)", 0 )
+GAME( 1990, harddrivcb,   harddriv, harddrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (compact, British, rev 2)", 0 )
+GAME( 1990, harddrivc1,   harddriv, harddrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin' (compact, rev 1)", 0 )
 
-GAME( 1989, stunrun,   0,        stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 6)", 0 )
-GAME( 1989, stunrunj,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 7, Japan)", 0 )
-GAME( 1989, stunrun5,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 5)", 0 )
-GAME( 1989, stunrune,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 5, Europe)", 0 )
-GAME( 1989, stunrun4,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 4)", 0 )
-GAME( 1989, stunrun3,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 3)", 0 )
-GAME( 1989, stunrun3e, stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 3, Europe)", 0 )
-GAME( 1989, stunrun2,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 2)", 0 )
-GAME( 1989, stunrun2e, stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 2, Europe)", 0 )
-GAME( 1989, stunrun0,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (rev 0)", 0 )
-GAME( 1989, stunrunp,  stunrun,  stunrun_machine,  stunrun, driver_device,  0,  ROT0, "Atari Games", "S.T.U.N. Runner (upright prototype)", 0 )
+GAME( 1989, stunrun,      0,        stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 6)", 0 )
+GAME( 1989, stunrunj,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 7, Japan)", 0 )
+GAME( 1989, stunrun5,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 5)", 0 )
+GAME( 1989, stunrune,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 5, Europe)", 0 )
+GAME( 1989, stunrun4,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 4)", 0 )
+GAME( 1989, stunrun3,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 3)", 0 )
+GAME( 1989, stunrun3e,    stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 3, Europe)", 0 )
+GAME( 1989, stunrun2,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 2)", 0 )
+GAME( 1989, stunrun2e,    stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 2, Europe)", 0 )
+GAME( 1989, stunrun0,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (rev 0)", 0 )
+GAME( 1989, stunrunp,     stunrun,  stunrun_machine,    stunrun,   harddriv_new_state, 0, ROT0, "Atari Games", "S.T.U.N. Runner (upright prototype)", 0 )
 
-GAME( 1990, racedriv,   0,        racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, rev 5)", 0 )
-GAME( 1990, racedrivb,  racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, British, rev 5)", 0 )
-GAME( 1990, racedrivg,  racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, German, rev 5)", 0 )
-GAME( 1990, racedriv4,  racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, rev 4)", 0 )
-GAME( 1990, racedrivb4, racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, British, rev 4)", 0 )
-GAME( 1990, racedrivg4, racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, German, rev 4)", 0 )
-GAME( 1990, racedriv3,  racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, rev 3)", 0 )
-GAME( 1990, racedriv2,  racedriv, racedriv_machine, racedriv, driver_device, 0,   ROT0, "Atari Games", "Race Drivin' (cockpit, rev 2)", 0 )
-GAME( 1990, racedriv1,  racedriv, racedrivb1_machine, racedriv, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, rev 1)", 0 )
-GAME( 1990, racedrivb1, racedriv, racedrivb1_machine, racedriv, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, British, rev 1)", 0 )
-GAME( 1990, racedrivg1, racedriv, racedrivb1_machine, racedriv, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, German, rev 2)", 0 )
+GAME( 1990, racedriv,     0,        racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, rev 5)", 0 )
+GAME( 1990, racedrivb,    racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, British, rev 5)", 0 )
+GAME( 1990, racedrivg,    racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, German, rev 5)", 0 )
+GAME( 1990, racedriv4,    racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, rev 4)", 0 )
+GAME( 1990, racedrivb4,   racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, British, rev 4)", 0 )
+GAME( 1990, racedrivg4,   racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, German, rev 4)", 0 )
+GAME( 1990, racedriv3,    racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, rev 3)", 0 )
+GAME( 1990, racedriv2,    racedriv, racedriv_machine,   racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, rev 2)", 0 )
+GAME( 1990, racedriv1,    racedriv, racedrivb1_machine, racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, rev 1)", 0 )
+GAME( 1990, racedrivb1,   racedriv, racedrivb1_machine, racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, British, rev 1)", 0 )
+GAME( 1990, racedrivg1,   racedriv, racedrivb1_machine, racedriv,  harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (cockpit, German, rev 2)", 0 )
 
-GAME( 1990, racedrivc,   racedriv, racedrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (compact, rev 5)", 0 )
-GAME( 1990, racedrivcb,  racedriv, racedrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (compact, British, rev 5)", 0 )
-GAME( 1990, racedrivcg,  racedriv, racedrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (compact, German, rev 5)", 0 )
-GAME( 1990, racedrivc4,  racedriv, racedrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (compact, rev 4)", 0 )
-GAME( 1990, racedrivcb4, racedriv, racedrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (compact, British, rev 4)", 0 )
-GAME( 1990, racedrivcg4, racedriv, racedrivc_machine, racedrivc, driver_device, 0, ROT0, "Atari Games", "Race Drivin' (compact, German, rev 4)", 0 )
-GAME( 1990, racedrivc2,  racedriv, racedrivc1_machine, racedrivc, driver_device, 0,ROT0, "Atari Games", "Race Drivin' (compact, rev 2)", 0 )
-GAME( 1990, racedrivc1,  racedriv, racedrivc1_machine, racedrivc, driver_device, 0,ROT0, "Atari Games", "Race Drivin' (compact, rev 1)", 0 )
+GAME( 1990, racedrivc,    racedriv, racedrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, rev 5)", 0 )
+GAME( 1990, racedrivcb,   racedriv, racedrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, British, rev 5)", 0 )
+GAME( 1990, racedrivcg,   racedriv, racedrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, German, rev 5)", 0 )
+GAME( 1990, racedrivc4,   racedriv, racedrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, rev 4)", 0 )
+GAME( 1990, racedrivcb4,  racedriv, racedrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, British, rev 4)", 0 )
+GAME( 1990, racedrivcg4,  racedriv, racedrivc_machine,  racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, German, rev 4)", 0 )
+GAME( 1990, racedrivc2,   racedriv, racedrivc1_machine, racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, rev 2)", 0 )
+GAME( 1990, racedrivc1,   racedriv, racedrivc1_machine, racedrivc, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' (compact, rev 1)", 0 )
 
-GAMEL( 1990, racedrivpan, racedriv, racedriv_panorama_machine, racedriv_pan, driver_device, 0, ROT0, "Atari Games", "Race Drivin' Panorama (prototype, rev 2.1)", 0, layout_racedrivpan )
+GAMEL( 1990, racedrivpan, racedriv, racedriv_panorama_machine, racedriv_pan, harddriv_new_state, 0, ROT0, "Atari Games", "Race Drivin' Panorama (prototype, rev 2.1)", 0, layout_racedrivpan )
 
-GAME( 1991, steeltal,  0,        steeltal_machine, steeltal, driver_device, 0, ROT0, "Atari Games", "Steel Talons (rev 2)", 0 )
-GAME( 1991, steeltalg, steeltal, steeltal_machine, steeltal, driver_device, 0, ROT0, "Atari Games", "Steel Talons (German, rev 2)", 0 )
-GAME( 1991, steeltal1, steeltal, steeltal1_machine, steeltal, driver_device, 0,ROT0, "Atari Games", "Steel Talons (rev 1)", 0 )
-GAME( 1991, steeltalp, steeltal, steeltalp_machine, steeltal, driver_device, 0,ROT0, "Atari Games", "Steel Talons (prototype)", MACHINE_NOT_WORKING )
+GAME( 1991, steeltal,     0,        steeltal_machine,  steeltal,   harddriv_new_state, 0, ROT0, "Atari Games", "Steel Talons (rev 2)", 0 )
+GAME( 1991, steeltalg,    steeltal, steeltal_machine,  steeltal,   harddriv_new_state, 0, ROT0, "Atari Games", "Steel Talons (German, rev 2)", 0 )
+GAME( 1991, steeltal1,    steeltal, steeltal1_machine, steeltal,   harddriv_new_state, 0, ROT0, "Atari Games", "Steel Talons (rev 1)", 0 )
+GAME( 1991, steeltalp,    steeltal, steeltalp_machine, steeltal,   harddriv_new_state, 0, ROT0, "Atari Games", "Steel Talons (prototype)", MACHINE_NOT_WORKING )
 
-GAME( 1993, strtdriv, 0,        strtdriv_machine, strtdriv, driver_device, 0, ROT0, "Atari Games", "Street Drivin' (prototype)", 0 )
+GAME( 1993, strtdriv,     0,        strtdriv_machine,  strtdriv,   harddriv_new_state, 0, ROT0, "Atari Games", "Street Drivin' (prototype)", 0 )
 
-GAME( 1993, hdrivair,  0,        hdrivair_machine, hdrivair, driver_device, 0, ROT0, "Atari Games", "Hard Drivin's Airborne (prototype)", MACHINE_IMPERFECT_SOUND )
-GAME( 1993, hdrivairp, hdrivair, hdrivairp_machine, hdrivair, driver_device, 0,ROT0, "Atari Games", "Hard Drivin's Airborne (prototype, early rev)", MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING )
+GAME( 1993, hdrivair,     0,        hdrivair_machine,  hdrivair,   harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin's Airborne (prototype)", MACHINE_IMPERFECT_SOUND )
+GAME( 1993, hdrivairp,    hdrivair, hdrivairp_machine, hdrivair,   harddriv_new_state, 0, ROT0, "Atari Games", "Hard Drivin's Airborne (prototype, early rev)", MACHINE_IMPERFECT_SOUND | MACHINE_NOT_WORKING )

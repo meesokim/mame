@@ -11,10 +11,6 @@ MACHINE_CONFIG_EXTERN( mod4oki );
 MACHINE_CONFIG_EXTERN( mpu4crys );
 INPUT_PORTS_EXTERN( mpu4 );
 
-#define GAME_FLAGS (MACHINE_NOT_WORKING|MACHINE_REQUIRES_ARTWORK|MACHINE_MECHANICAL)
-
-
-
 #define M4FRKSTN_SOUND \
 	ROM_REGION( 0x40000, "upd", 0 ) \
 	ROM_LOAD("fr1snd.bin",  0x00000, 0x40000, CRC(2d77bbde) SHA1(0397ede538e913dc2972e260589022564fcd8fe4) )
@@ -759,7 +755,7 @@ ROM_START( m4ndupc )
 	M4NDUP_SOUND
 ROM_END
 
-
+#define GAME_FLAGS (MACHINE_NOT_WORKING|MACHINE_REQUIRES_ARTWORK|MACHINE_MECHANICAL)
 
 GAME(199?, m4frkstn ,0          ,mpu4crys   ,mpu4       , mpu4_state,m_frkstn,  ROT0,   "Crystal","Frank 'n' Stein (Crystal) (MPU4, set 1)",   GAME_FLAGS|MACHINE_NO_SOUND )
 GAME(199?, m4frkstna,m4frkstn   ,mpu4crys   ,mpu4       , mpu4_state,m_frkstn,  ROT0,   "Crystal","Frank 'n' Stein (Crystal) (MPU4, set 2)",   GAME_FLAGS|MACHINE_NO_SOUND )

@@ -25,10 +25,13 @@
 
 
 #include "emu.h"
-#include "cpu/m68000/m68000.h"
-#include "sound/okim6295.h"
-#include "sound/2413intf.h"
 #include "includes/rampart.h"
+
+#include "cpu/m68000/m68000.h"
+#include "machine/watchdog.h"
+#include "sound/okim6295.h"
+#include "sound/ym2413.h"
+#include "speaker.h"
 
 
 #define MASTER_CLOCK        XTAL_14_31818MHz
@@ -50,7 +53,7 @@ void rampart_state::scanline_update(screen_device &screen, int scanline)
 {
 	/* generate 32V signals */
 	if ((scanline & 32) == 0)
-		scanline_int_gen(m_maincpu);
+		scanline_int_gen(*m_maincpu);
 }
 
 
@@ -145,7 +148,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16, rampart_state )
 	AM_RANGE(0x6c0002, 0x6c0003) AM_MIRROR(0x019ff8) AM_READ_PORT("TRACK1")
 	AM_RANGE(0x6c0004, 0x6c0005) AM_MIRROR(0x019ff8) AM_READ_PORT("TRACK2")
 	AM_RANGE(0x6c0006, 0x6c0007) AM_MIRROR(0x019ff8) AM_READ_PORT("TRACK3")
-	AM_RANGE(0x726000, 0x726001) AM_MIRROR(0x019ffe) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x726000, 0x726001) AM_MIRROR(0x019ffe) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x7e6000, 0x7e6001) AM_MIRROR(0x019ffe) AM_WRITE(scanline_int_ack_w)
 ADDRESS_MAP_END
 
@@ -332,7 +335,7 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( rampart, rampart_state )
+static MACHINE_CONFIG_START( rampart )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, MASTER_CLOCK/2)
@@ -345,7 +348,8 @@ static MACHINE_CONFIG_START( rampart, rampart_state )
 
 	MCFG_ATARI_EEPROM_2816_ADD("eeprom")
 
-	MCFG_WATCHDOG_VBLANK_INIT(8)
+	MCFG_WATCHDOG_ADD("watchdog")
+	MCFG_WATCHDOG_VBLANK_INIT("screen", 8)
 
 	/* video hardware */
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", rampart)
@@ -369,7 +373,7 @@ static MACHINE_CONFIG_START( rampart, rampart_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MCFG_OKIM6295_ADD("oki", MASTER_CLOCK/4/3, OKIM6295_PIN7_LOW)
+	MCFG_OKIM6295_ADD("oki", MASTER_CLOCK/4/3, PIN7_LOW)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 
 	MCFG_SOUND_ADD("ymsnd", YM2413, MASTER_CLOCK/4)
@@ -478,10 +482,10 @@ ROM_END
 
 DRIVER_INIT_MEMBER(rampart_state,rampart)
 {
-	UINT8 *rom = memregion("maincpu")->base();
+	uint8_t *rom = memregion("maincpu")->base();
 
 	memcpy(&rom[0x140000], &rom[0x40000], 0x8000);
-	slapstic_configure(*m_maincpu, 0x140000, 0x438000);
+	slapstic_configure(*m_maincpu, 0x140000, 0x438000, memregion("maincpu")->base() + 0x140000);
 }
 
 
@@ -492,6 +496,6 @@ DRIVER_INIT_MEMBER(rampart_state,rampart)
  *
  *************************************/
 
-GAME( 1990, rampart,  0,       rampart, rampart, rampart_state,  rampart, ROT0, "Atari Games", "Rampart (Trackball)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, rampart,  0,       rampart, rampart,  rampart_state, rampart, ROT0, "Atari Games", "Rampart (Trackball)", MACHINE_SUPPORTS_SAVE )
 GAME( 1990, rampart2p,rampart, rampart, ramprt2p, rampart_state, rampart, ROT0, "Atari Games", "Rampart (Joystick)", MACHINE_SUPPORTS_SAVE )
 GAME( 1990, rampartj, rampart, rampart, rampartj, rampart_state, rampart, ROT0, "Atari Games", "Rampart (Japan, Joystick)", MACHINE_SUPPORTS_SAVE )

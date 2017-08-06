@@ -20,12 +20,15 @@
 
 
 #include "emu.h"
-#include "cpu/m68000/m68000.h"
-#include "sound/okim6295.h"
 #include "includes/klax.h"
 
+#include "cpu/m68000/m68000.h"
 #include "cpu/z80/z80.h"
+#include "machine/watchdog.h"
+#include "sound/okim6295.h"
 #include "sound/msm5205.h"
+#include "speaker.h"
+
 
 /*************************************
  *
@@ -42,8 +45,8 @@ void klax_state::update_interrupts()
 void klax_state::scanline_update(screen_device &screen, int scanline)
 {
 	/* generate 32V signals */
-	if ((scanline & 32) == 0 && !(ioport("P1")->read() & 0x800))
-		scanline_int_gen(m_maincpu);
+	if ((scanline & 32) == 0 && !(m_p1->read() & 0x800))
+		scanline_int_gen(*m_maincpu);
 }
 
 
@@ -82,7 +85,7 @@ static ADDRESS_MAP_START( klax_map, AS_PROGRAM, 16, klax_state )
 	AM_RANGE(0x260000, 0x260001) AM_READ_PORT("P1") AM_WRITE(klax_latch_w)
 	AM_RANGE(0x260002, 0x260003) AM_READ_PORT("P2")
 	AM_RANGE(0x270000, 0x270001) AM_DEVREADWRITE8("oki", okim6295_device, read, write, 0x00ff)
-	AM_RANGE(0x2e0000, 0x2e0001) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x2e0000, 0x2e0001) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x360000, 0x360001) AM_WRITE(interrupt_ack_w)
 	AM_RANGE(0x3e0000, 0x3e07ff) AM_DEVREADWRITE8("palette", palette_device, read, write, 0xff00) AM_SHARE("palette")
 	AM_RANGE(0x3f0000, 0x3f0f7f) AM_RAM_DEVWRITE("playfield", tilemap_device, write) AM_SHARE("playfield")
@@ -99,7 +102,7 @@ static ADDRESS_MAP_START( klax2bl_map, AS_PROGRAM, 16, klax_state )
 	AM_RANGE(0x260000, 0x260001) AM_READ_PORT("P1") AM_WRITE(klax_latch_w)
 	AM_RANGE(0x260002, 0x260003) AM_READ_PORT("P2")
 //  AM_RANGE(0x270000, 0x270001) AM_DEVREADWRITE8("oki", okim6295_device, read, write, 0x00ff) // no OKI here
-	AM_RANGE(0x2e0000, 0x2e0001) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x2e0000, 0x2e0001) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x360000, 0x360001) AM_WRITE(interrupt_ack_w)
 	AM_RANGE(0x3e0000, 0x3e07ff) AM_DEVREADWRITE8("palette", palette_device, read, write, 0xff00) AM_SHARE("palette")
 	AM_RANGE(0x3f0000, 0x3f0f7f) AM_RAM_DEVWRITE("playfield", tilemap_device, write) AM_SHARE("playfield")
@@ -123,20 +126,20 @@ static INPUT_PORTS_START( klax )
 	PORT_BIT( 0x0100, IP_ACTIVE_LOW, IPT_BUTTON1 ) PORT_PLAYER(1)
 	PORT_BIT( 0x0600, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_BIT( 0x0800, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_VBLANK("screen")
-	PORT_BIT( 0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT ) PORT_PLAYER(1)
-	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT ) PORT_PLAYER(1)
-	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN ) PORT_PLAYER(1)
-	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP ) PORT_PLAYER(1)
+	PORT_BIT( 0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT ) PORT_4WAY PORT_PLAYER(1)
+	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT ) PORT_4WAY PORT_PLAYER(1)
+	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN ) PORT_4WAY PORT_PLAYER(1)
+	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP ) PORT_4WAY PORT_PLAYER(1)
 
 	PORT_START("P2")
 	PORT_BIT( 0x00ff, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_BIT( 0x0100, IP_ACTIVE_LOW, IPT_BUTTON1 ) PORT_PLAYER(2)
 	PORT_BIT( 0x0600, IP_ACTIVE_LOW, IPT_UNUSED )
 	PORT_SERVICE( 0x0800, IP_ACTIVE_LOW )
-	PORT_BIT( 0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT ) PORT_PLAYER(2)
-	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT ) PORT_PLAYER(2)
-	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN ) PORT_PLAYER(2)
-	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP ) PORT_PLAYER(2)
+	PORT_BIT( 0x1000, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT ) PORT_4WAY PORT_PLAYER(2)
+	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT ) PORT_4WAY PORT_PLAYER(2)
+	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN ) PORT_4WAY PORT_PLAYER(2)
+	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_JOYSTICK_UP ) PORT_4WAY PORT_PLAYER(2)
 INPUT_PORTS_END
 
 
@@ -187,7 +190,7 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( klax, klax_state )
+static MACHINE_CONFIG_START( klax )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, ATARI_CLOCK_14MHz/2)
@@ -197,6 +200,8 @@ static MACHINE_CONFIG_START( klax, klax_state )
 	MCFG_MACHINE_RESET_OVERRIDE(klax_state,klax)
 
 	MCFG_ATARI_EEPROM_2816_ADD("eeprom")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", klax)
@@ -221,7 +226,7 @@ static MACHINE_CONFIG_START( klax, klax_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MCFG_OKIM6295_ADD("oki", ATARI_CLOCK_14MHz/4/4, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki", ATARI_CLOCK_14MHz/4/4, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -433,10 +438,10 @@ ROM_END
  *
  *************************************/
 
-GAME( 1989, klax,  0,    klax, klax, driver_device, 0, ROT0, "Atari Games", "Klax (set 1)", 0 )
-GAME( 1989, klax2, klax, klax, klax, driver_device, 0, ROT0, "Atari Games", "Klax (set 2)", 0 )
-GAME( 1989, klax3, klax, klax, klax, driver_device, 0, ROT0, "Atari Games", "Klax (set 3)", 0 )
-GAME( 1989, klaxj, klax, klax, klax, driver_device, 0, ROT0, "Atari Games", "Klax (Japan)", 0 )
-GAME( 1989, klaxd, klax, klax, klax, driver_device, 0, ROT0, "Atari Games", "Klax (Germany)", 0 )
+GAME( 1989, klax,  0,    klax, klax, klax_state, 0, ROT0, "Atari Games", "Klax (set 1)", 0 )
+GAME( 1989, klax2, klax, klax, klax, klax_state, 0, ROT0, "Atari Games", "Klax (set 2)", 0 )
+GAME( 1989, klax3, klax, klax, klax, klax_state, 0, ROT0, "Atari Games", "Klax (set 3)", 0 )
+GAME( 1989, klaxj, klax, klax, klax, klax_state, 0, ROT0, "Atari Games", "Klax (Japan)", 0 )
+GAME( 1989, klaxd, klax, klax, klax, klax_state, 0, ROT0, "Atari Games", "Klax (Germany)", 0 )
 
-GAME( 1989, klax2bl, klax, klax2bl, klax, driver_device, 0, ROT0, "bootleg", "Klax (set 2, bootleg)", MACHINE_NOT_WORKING )
+GAME( 1989, klax2bl, klax, klax2bl, klax, klax_state, 0, ROT0, "bootleg", "Klax (set 2, bootleg)", MACHINE_NOT_WORKING )

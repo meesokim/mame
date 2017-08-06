@@ -20,20 +20,18 @@ public:
 	required_device<gfxdecode_device> m_gfxdecode;
 	required_device<palette_device> m_palette;
 
-	required_shared_ptr<UINT8> m_videoram;
-	optional_shared_ptr<UINT8> m_spriteram;
-	optional_shared_ptr<UINT8> m_videoreg;
+	required_shared_ptr<uint8_t> m_videoram;
+	optional_shared_ptr<uint8_t> m_spriteram;
+	optional_shared_ptr<uint8_t> m_videoreg;
 
-	UINT8 m_bbx_sound_enable;
-	UINT8 m_sound_latch;
+	uint8_t m_bbx_sound_enable;
+	uint8_t m_sound_latch;
 	int m_gfx_type;
 	tilemap_t *m_background;
 
 	// shangkid and chinhero
-	DECLARE_WRITE8_MEMBER(maincpu_bank_w);
-	DECLARE_WRITE8_MEMBER(bbx_enable_w);
-	DECLARE_WRITE8_MEMBER(cpu_reset_w);
-	DECLARE_WRITE8_MEMBER(sound_enable_w);
+	DECLARE_WRITE_LINE_MEMBER(cpu_reset_w);
+	DECLARE_WRITE_LINE_MEMBER(sound_enable_w);
 	DECLARE_READ8_MEMBER(soundlatch_r);
 	DECLARE_WRITE8_MEMBER(videoram_w);
 	DECLARE_WRITE8_MEMBER(ay8910_portb_w);
@@ -51,9 +49,9 @@ public:
 	DECLARE_PALETTE_INIT(dynamski);
 	DECLARE_MACHINE_RESET(shangkid);
 
-	UINT32 screen_update_shangkid(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_dynamski(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	void draw_sprite(const UINT8 *source, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_shangkid(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_dynamski(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	void draw_sprite(const uint8_t *source, bitmap_ind16 &bitmap, const rectangle &cliprect);
 	void shangkid_draw_sprites(bitmap_ind16 &bitmap, const rectangle &cliprect);
 	void dynamski_draw_background(bitmap_ind16 &bitmap, const rectangle &cliprect, int pri );
 	void dynamski_draw_sprites(bitmap_ind16 &bitmap, const rectangle &cliprect );

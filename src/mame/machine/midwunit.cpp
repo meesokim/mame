@@ -89,7 +89,7 @@ WRITE16_MEMBER(midwunit_state::midwunit_io_w)
 			m_dcs->reset_w(newword & 0x10);
 
 			/* bit 5 (active low) reset security chip */
-			m_midway_serial_pic->reset_w(newword & 0x20);
+			if (m_midway_serial_pic) m_midway_serial_pic->reset_w(newword & 0x20);
 			break;
 
 		case 3:
@@ -113,8 +113,6 @@ WRITE16_MEMBER(midwunit_state::midwunit_io_w)
  *
  *************************************/
 
-IOPORT_ARRAY_MEMBER(midwunit_state::wunit_ports) { "IN0", "IN1", "DSW", "IN2" };
-
 READ16_MEMBER(midwunit_state::midwunit_io_r)
 {
 	/* apply I/O shuffling */
@@ -129,8 +127,12 @@ READ16_MEMBER(midwunit_state::midwunit_io_r)
 			return m_ports[offset]->read();
 
 		case 4:
-			return (m_midway_serial_pic->status_r(space,0) << 12) | midwunit_sound_state_r(space,0,0xffff);
+		{
+			int picret = 0;
+			if (m_midway_serial_pic) picret = m_midway_serial_pic->status_r(space, 0);
 
+			return (picret << 12) | midwunit_sound_state_r(space, 0, 0xffff);
+		}
 		default:
 			logerror("%08X:Unknown I/O read from %d\n", space.device().safe_pc(), offset);
 			break;
@@ -218,13 +220,15 @@ DRIVER_INIT_MEMBER(midwunit_state,mk3r10)
 DRIVER_INIT_MEMBER(midwunit_state,umk3)
 {
 	init_mk3_common();
-	m_umk3_palette = m_maincpu->space(AS_PROGRAM).install_write_handler(0x0106a060, 0x0106a09f, write16_delegate(FUNC(midwunit_state::umk3_palette_hack_w),this));
+	m_maincpu->space(AS_PROGRAM).install_write_handler(0x0106a060, 0x0106a09f, write16_delegate(FUNC(midwunit_state::umk3_palette_hack_w),this));
+	m_umk3_palette = m_mainram + (0x6a060>>4);
 }
 
 DRIVER_INIT_MEMBER(midwunit_state,umk3r11)
 {
 	init_mk3_common();
-	m_umk3_palette = m_maincpu->space(AS_PROGRAM).install_write_handler(0x0106a060, 0x0106a09f,write16_delegate(FUNC(midwunit_state::umk3_palette_hack_w),this));
+	m_maincpu->space(AS_PROGRAM).install_write_handler(0x0106a060, 0x0106a09f,write16_delegate(FUNC(midwunit_state::umk3_palette_hack_w),this));
+	m_umk3_palette = m_mainram + (0x6a060>>4);
 }
 
 
@@ -357,14 +361,18 @@ MACHINE_RESET_MEMBER(midwunit_state,midwunit)
 
 READ16_MEMBER(midwunit_state::midwunit_security_r)
 {
-	return m_midway_serial_pic->read(space,0);
+	uint16_t picret = 0;
+	if (m_midway_serial_pic) picret = m_midway_serial_pic->read(space, 0);
+	return picret;
 }
 
 
 WRITE16_MEMBER(midwunit_state::midwunit_security_w)
 {
 	if (offset == 0 && ACCESSING_BITS_0_7)
-		m_midway_serial_pic->write(space, 0, data);
+	{
+		if (m_midway_serial_pic) m_midway_serial_pic->write(space, 0, data);
+	}
 }
 
 

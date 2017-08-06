@@ -16,7 +16,7 @@
 #include "emucore.h"
 #include "osdcore.h"
 #include "unicode.h"
-#include "cliopts.h"
+#include "../frontend/mame/ui/menuitem.h"
 
 #include <memory>
 #include <string>
@@ -51,12 +51,10 @@ public:
 	 * the pixel values rgb_t(0xff,0xff,0xff,0xff) or
 	 * rgb_t(0x00,0xff,0xff,0xff) for each pixel of a black & white font
 	 */
-	virtual bool get_bitmap(unicode_char chnum, bitmap_argb32 &bitmap, std::int32_t &width, std::int32_t &xoffs, std::int32_t &yoffs) = 0;
+	virtual bool get_bitmap(char32_t chnum, bitmap_argb32 &bitmap, std::int32_t &width, std::int32_t &xoffs, std::int32_t &yoffs) = 0;
 };
 
 // ======================> osd_interface
-
-struct slider_state;
 
 // description of the currently-running machine
 class osd_interface
@@ -72,7 +70,7 @@ public:
 	virtual void wait_for_debugger(device_t &device, bool firststop) = 0;
 
 	// audio overridables
-	virtual void update_audio_stream(const INT16 *buffer, int samples_this_frame) = 0;
+	virtual void update_audio_stream(const int16_t *buffer, int samples_this_frame) = 0;
 	virtual void set_mastervolume(int attenuation) = 0;
 	virtual bool no_sound() = 0;
 
@@ -80,7 +78,8 @@ public:
 	virtual void customize_input_type_list(simple_list<input_type_entry> &typelist) = 0;
 
 	// video overridables
-	virtual slider_state *get_slider_list() = 0;
+	virtual void add_audio_to_recording(const int16_t *buffer, int samples_this_frame) = 0;
+	virtual std::vector<ui::menu_item> get_slider_list() = 0;
 
 	// font interface
 	virtual osd_font::ptr font_alloc() = 0;

@@ -140,7 +140,7 @@ Notes:
 
 
  - About the bootleg set:
-   It matches the US (ealier) set 99.99% just in 64K chunks.  The ONLY difference
+   It matches the US (earlier) set 99.99% just in 64K chunks.  The ONLY difference
    in the data is WWFS47.BIN has 5 bytes with a single bit stuck (0x00001000):
 
    Offset   WWFS47.BIN   24j6-0.112 (first 0x10000 bytes)
@@ -154,11 +154,14 @@ Notes:
 *******************************************************************************/
 
 #include "emu.h"
+#include "includes/wwfsstar.h"
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/z80/z80.h"
-#include "sound/2151intf.h"
 #include "sound/okim6295.h"
-#include "includes/wwfsstar.h"
+#include "sound/ym2151.h"
+#include "speaker.h"
+
 
 #define MASTER_CLOCK    XTAL_20MHz
 #define CPU_CLOCK       MASTER_CLOCK / 2
@@ -194,7 +197,7 @@ static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, wwfsstar_state )
 	AM_RANGE(0x8000, 0x87ff) AM_RAM
 	AM_RANGE(0x8800, 0x8801) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0x9800, 0x9800) AM_DEVREADWRITE("oki", okim6295_device, read, write)
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 
@@ -219,7 +222,7 @@ WRITE16_MEMBER(wwfsstar_state::scroll_w)
 
 WRITE16_MEMBER(wwfsstar_state::sound_w)
 {
-	soundlatch_byte_w(space, 1, data & 0xff);
+	m_soundlatch->write(space, 1, data & 0xff);
 	m_audiocpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE );
 }
 
@@ -316,7 +319,7 @@ static INPUT_PORTS_START( wwfsstar )
 	PORT_BIT( 0x0080, IP_ACTIVE_LOW, IPT_START2 ) PORT_NAME("Button B (1P VS 2P - Buy-in)")
 
 	PORT_START("SYSTEM")
-	PORT_BIT( 0x0001, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, wwfsstar_state, vblank_r, NULL) /* VBlank */
+	PORT_BIT( 0x0001, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, wwfsstar_state, vblank_r, nullptr) /* VBlank */
 	PORT_BIT( 0x0002, IP_ACTIVE_LOW, IPT_COIN1 )
 	PORT_BIT( 0x0004, IP_ACTIVE_LOW, IPT_COIN2 )
 	PORT_BIT( 0x0008, IP_ACTIVE_LOW, IPT_SERVICE1 )
@@ -414,7 +417,7 @@ GFXDECODE_END
  Machine Driver(s)
 *******************************************************************************/
 
-static MACHINE_CONFIG_START( wwfsstar, wwfsstar_state )
+static MACHINE_CONFIG_START( wwfsstar )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, CPU_CLOCK)
@@ -437,12 +440,14 @@ static MACHINE_CONFIG_START( wwfsstar, wwfsstar_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_YM2151_ADD("ymsnd", XTAL_3_579545MHz)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
 	MCFG_SOUND_ROUTE(0, "lspeaker", 0.45)
 	MCFG_SOUND_ROUTE(1, "rspeaker", 0.45)
 
-	MCFG_OKIM6295_ADD("oki", XTAL_1_056MHz, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki", XTAL_1_056MHz, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 0.47)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 0.47)
 MACHINE_CONFIG_END
@@ -630,8 +635,8 @@ ROM_END
 
 
 
-GAME( 1989, wwfsstar,   0,        wwfsstar, wwfsstar, driver_device,  0, ROT0, "Technos Japan", "WWF Superstars (Europe)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, wwfsstaru,  wwfsstar, wwfsstar, wwfsstar, driver_device,  0, ROT0, "Technos Japan", "WWF Superstars (US, Newer)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, wwfsstarua, wwfsstar, wwfsstar, wwfsstar, driver_device,  0, ROT0, "Technos Japan", "WWF Superstars (US)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, wwfsstarj,  wwfsstar, wwfsstar, wwfsstar, driver_device,  0, ROT0, "Technos Japan", "WWF Superstars (Japan)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, wwfsstarb,  wwfsstar, wwfsstar, wwfsstar, driver_device,  0, ROT0, "bootleg",       "WWF Superstars (bootleg)", MACHINE_SUPPORTS_SAVE )
+GAME( 1989, wwfsstar,   0,        wwfsstar, wwfsstar, wwfsstar_state, 0, ROT0, "Technos Japan", "WWF Superstars (Europe)",    MACHINE_SUPPORTS_SAVE )
+GAME( 1989, wwfsstaru,  wwfsstar, wwfsstar, wwfsstar, wwfsstar_state, 0, ROT0, "Technos Japan", "WWF Superstars (US, Newer)", MACHINE_SUPPORTS_SAVE )
+GAME( 1989, wwfsstarua, wwfsstar, wwfsstar, wwfsstar, wwfsstar_state, 0, ROT0, "Technos Japan", "WWF Superstars (US)",        MACHINE_SUPPORTS_SAVE )
+GAME( 1989, wwfsstarj,  wwfsstar, wwfsstar, wwfsstar, wwfsstar_state, 0, ROT0, "Technos Japan", "WWF Superstars (Japan)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1989, wwfsstarb,  wwfsstar, wwfsstar, wwfsstar, wwfsstar_state, 0, ROT0, "bootleg",       "WWF Superstars (bootleg)",   MACHINE_SUPPORTS_SAVE )

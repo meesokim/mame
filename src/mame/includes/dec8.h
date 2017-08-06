@@ -1,10 +1,12 @@
 // license:BSD-3-Clause
 // copyright-holders:Bryan McPhail
+#include "machine/gen_latch.h"
 #include "sound/msm5205.h"
 #include "video/bufsprite.h"
 #include "video/decbac06.h"
 #include "video/deckarn.h"
 #include "video/decmxc06.h"
+#include "video/decrmc3.h"
 
 class dec8_state : public driver_device
 {
@@ -26,10 +28,12 @@ public:
 		m_tilegen2(*this, "tilegen2"),
 		m_spritegen_krn(*this, "spritegen_krn"),
 		m_spritegen_mxc(*this, "spritegen_mxc"),
+		m_gfxdecode(*this, "gfxdecode"),
+		m_palette(*this, "palette"),
+		m_soundlatch(*this, "soundlatch"),
 		m_videoram(*this, "videoram"),
 		m_bg_data(*this, "bg_data"),
-		m_gfxdecode(*this, "gfxdecode"),
-		m_palette(*this, "palette") { }
+		m_coin_port(*this, "I8751") { }
 
 	/* devices */
 	required_device<cpu_device> m_maincpu;
@@ -42,17 +46,17 @@ public:
 	optional_device<deco_bac06_device> m_tilegen2;
 	optional_device<deco_karnovsprites_device> m_spritegen_krn;
 	optional_device<deco_mxc06_device> m_spritegen_mxc;
+	required_device<gfxdecode_device> m_gfxdecode;
+	required_device<deco_rmc3_device> m_palette;
+	required_device<generic_latch_8_device> m_soundlatch;
 
 	/* memory pointers */
-	required_shared_ptr<UINT8> m_videoram;
-	optional_shared_ptr<UINT8> m_bg_data;
+	required_shared_ptr<uint8_t> m_videoram;
+	optional_shared_ptr<uint8_t> m_bg_data;
 
-	required_device<gfxdecode_device> m_gfxdecode;
-	required_device<palette_device> m_palette;
-
-	UINT8 *  m_pf1_data;
-	UINT8 *  m_row;
-	UINT16   m_buffered_spriteram16[0x800/2]; // for the mxc06 sprite chip emulation (oscar, cobra)
+	uint8_t *  m_pf1_data;
+	uint8_t *  m_row;
+	uint16_t   m_buffered_spriteram16[0x800/2]; // for the mxc06 sprite chip emulation (oscar, cobra)
 
 	/* video-related */
 	tilemap_t  *m_bg_tilemap;
@@ -93,7 +97,6 @@ public:
 	DECLARE_WRITE8_MEMBER(lastmisn_i8751_w);
 	DECLARE_WRITE8_MEMBER(shackled_i8751_w);
 	DECLARE_WRITE8_MEMBER(csilver_i8751_w);
-	DECLARE_WRITE8_MEMBER(srdarwin_i8751_w);
 	DECLARE_WRITE8_MEMBER(dec8_bank_w);
 	DECLARE_WRITE8_MEMBER(ghostb_bank_w);
 	DECLARE_WRITE8_MEMBER(csilver_control_w);
@@ -105,6 +108,8 @@ public:
 	DECLARE_WRITE8_MEMBER(flip_screen_w);
 	DECLARE_READ8_MEMBER(dec8_mcu_from_main_r);
 	DECLARE_WRITE8_MEMBER(dec8_mcu_to_main_w);
+	DECLARE_READ8_MEMBER(srdarwin_mcu_from_main_r);
+	DECLARE_WRITE8_MEMBER(srdarwin_mcu_to_main_w);
 	DECLARE_WRITE8_MEMBER(dec8_bg_data_w);
 	DECLARE_READ8_MEMBER(dec8_bg_data_r);
 	DECLARE_WRITE8_MEMBER(dec8_videoram_w);
@@ -146,19 +151,18 @@ public:
 	DECLARE_VIDEO_START(gondo);
 	DECLARE_VIDEO_START(garyoret);
 	DECLARE_VIDEO_START(ghostb);
-	DECLARE_PALETTE_INIT(ghostb);
 	DECLARE_VIDEO_START(oscar);
 	DECLARE_VIDEO_START(srdarwin);
 	DECLARE_VIDEO_START(cobracom);
-	UINT32 screen_update_lastmisn(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_shackled(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_gondo(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_garyoret(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_ghostb(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_oscar(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_srdarwin(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	UINT32 screen_update_cobracom(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	void screen_eof_dec8(screen_device &screen, bool state);
+	uint32_t screen_update_lastmisn(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_shackled(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_gondo(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_garyoret(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_ghostb(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_oscar(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_srdarwin(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_cobracom(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	DECLARE_WRITE_LINE_MEMBER(screen_vblank_dec8);
 	INTERRUPT_GEN_MEMBER(gondo_interrupt);
 	INTERRUPT_GEN_MEMBER(oscar_interrupt);
 	void srdarwin_draw_sprites(  bitmap_ind16 &bitmap, const rectangle &cliprect, int pri );
@@ -166,4 +170,8 @@ public:
 
 protected:
 	virtual void device_timer(emu_timer &timer, device_timer_id id, int param, void *ptr) override;
+
+private:
+	/* ports */
+	optional_ioport m_coin_port;
 };

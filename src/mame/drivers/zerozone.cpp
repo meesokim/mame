@@ -32,16 +32,18 @@
 
 #include "emu.h"
 #include "includes/zerozone.h"
-#include "cpu/z80/z80.h"
+
 #include "cpu/m68000/m68000.h"
 #include "sound/okim6295.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 WRITE16_MEMBER( zerozone_state::sound_w )
 {
 	if (ACCESSING_BITS_8_15)
 	{
-		soundlatch_byte_w(space, offset, data >> 8);
+		m_soundlatch->write(space, offset, data >> 8);
 		m_audiocpu->set_input_line_and_vector(0, HOLD_LINE, 0xff);
 	}
 }
@@ -66,7 +68,7 @@ static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, zerozone_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x87ff) AM_RAM
 	AM_RANGE(0x9800, 0x9800) AM_DEVREADWRITE("oki", okim6295_device, read, write)
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 
@@ -166,7 +168,7 @@ void zerozone_state::machine_reset()
 	m_tilebank = 0;
 }
 
-static MACHINE_CONFIG_START( zerozone, zerozone_state )
+static MACHINE_CONFIG_START( zerozone )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 10000000)   /* 10 MHz */
@@ -195,7 +197,9 @@ static MACHINE_CONFIG_START( zerozone, zerozone_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
-	MCFG_OKIM6295_ADD("oki", 1056000, OKIM6295_PIN7_HIGH) // clock frequency & pin 7 not verified
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
+	MCFG_OKIM6295_ADD("oki", 1056000, PIN7_HIGH) // clock frequency & pin 7 not verified
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -241,5 +245,5 @@ ROM_START( lvgirl94 )
 ROM_END
 
 
-GAME( 1993, zerozone, 0, zerozone, zerozone, driver_device, 0, ROT0, "Comad", "Zero Zone", MACHINE_SUPPORTS_SAVE )
-GAME( 1994, lvgirl94, 0, zerozone, zerozone, driver_device, 0, ROT0, "Comad", "Las Vegas Girl (Girl '94)", MACHINE_SUPPORTS_SAVE )
+GAME( 1993, zerozone, 0, zerozone, zerozone, zerozone_state, 0, ROT0, "Comad", "Zero Zone", MACHINE_SUPPORTS_SAVE )
+GAME( 1994, lvgirl94, 0, zerozone, zerozone, zerozone_state, 0, ROT0, "Comad", "Las Vegas Girl (Girl '94)", MACHINE_SUPPORTS_SAVE )

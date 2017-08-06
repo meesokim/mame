@@ -122,9 +122,14 @@ e000 - e7ff        R/W      Work RAM
 ******************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "sound/ay8910.h"
 #include "includes/nova2001.h"
+
+#include "cpu/z80/z80.h"
+#include "machine/watchdog.h"
+#include "sound/ay8910.h"
+#include "screen.h"
+#include "speaker.h"
+
 
 #define MAIN_CLOCK XTAL_12MHz
 
@@ -185,7 +190,7 @@ static ADDRESS_MAP_START( nova2001_map, AS_PROGRAM, 8, nova2001_state )
 	AM_RANGE(0xc001, 0xc001) AM_DEVREADWRITE("ay2", ay8910_device, data_r, data_w)
 	AM_RANGE(0xc002, 0xc002) AM_DEVWRITE("ay1", ay8910_device, address_w)
 	AM_RANGE(0xc003, 0xc003) AM_DEVWRITE("ay2", ay8910_device, address_w)
-	AM_RANGE(0xc004, 0xc004) AM_READ(watchdog_reset_r)
+	AM_RANGE(0xc004, 0xc004) AM_DEVREAD("watchdog", watchdog_timer_device, reset_r)
 	AM_RANGE(0xc006, 0xc006) AM_READ_PORT("IN0")
 	AM_RANGE(0xc007, 0xc007) AM_READ_PORT("IN1")
 	AM_RANGE(0xc00e, 0xc00e) AM_READ_PORT("IN2")
@@ -385,7 +390,7 @@ static INPUT_PORTS_START( ninjakun )
 
 	PORT_START("IN2")   /* 0xa002 */
 	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_CUSTOM ) PORT_VBLANK("screen")
-	PORT_BIT( 0x0c, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, nova2001_state,ninjakun_io_A002_ctrl_r, NULL)
+	PORT_BIT( 0x0c, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, nova2001_state,ninjakun_io_A002_ctrl_r, nullptr)
 
 	PORT_START("DSW1") // printed "SW 2"
 	PORT_DIPNAME( 0x01, 0x00, DEF_STR( Cabinet ) )  PORT_DIPLOCATION("SW2:1")
@@ -633,12 +638,14 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( nova2001, nova2001_state )
+static MACHINE_CONFIG_START( nova2001 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, MAIN_CLOCK/4)  // 3 MHz verified on schematics
 	MCFG_CPU_PROGRAM_MAP(nova2001_map)
 	MCFG_CPU_VBLANK_INT_DRIVER("screen", nova2001_state,  irq0_line_hold)
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -669,7 +676,7 @@ static MACHINE_CONFIG_START( nova2001, nova2001_state )
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( ninjakun, nova2001_state )
+static MACHINE_CONFIG_START( ninjakun )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, MAIN_CLOCK/4)  // 3 MHz
@@ -713,7 +720,7 @@ static MACHINE_CONFIG_START( ninjakun, nova2001_state )
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.20)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( pkunwar, nova2001_state )
+static MACHINE_CONFIG_START( pkunwar )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, MAIN_CLOCK/4)  // 3 MHz
@@ -750,7 +757,7 @@ static MACHINE_CONFIG_START( pkunwar, nova2001_state )
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( raiders5, nova2001_state )
+static MACHINE_CONFIG_START( raiders5 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, MAIN_CLOCK/4)  // 3 MHz
@@ -972,9 +979,9 @@ void nova2001_state::lineswap_gfx_roms(const char *region, const int bit)
 {
 	const int length = memregion(region)->bytes();
 
-	UINT8* const src = memregion(region)->base();
+	uint8_t* const src = memregion(region)->base();
 
-	dynamic_buffer temp(length);
+	std::vector<uint8_t> temp(length);
 
 	const int mask = (1 << (bit + 1)) - 1;
 
@@ -1019,12 +1026,12 @@ DRIVER_INIT_MEMBER(nova2001_state,raiders5)
 
 // many of these don't explicitly state Japan, eg. Nova 2001 could easily be used anywhere.
 
-//    YEAR, NAME,      PARENT,   MACHINE,  INPUT,    INIT,     MONITOR,COMPANY,FULLNAME,FLAGS
-GAME( 1983, nova2001,  0,        nova2001, nova2001, driver_device, 0,        ROT0,   "UPL", "Nova 2001 (Japan)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, nova2001h, nova2001, nova2001, nova2001, driver_device, 0,        ROT0,   "UPL", "Nova 2001 (Japan, hack?)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, nova2001u, nova2001, nova2001, nova2001, driver_device, 0,        ROT0,   "UPL (Universal license)", "Nova 2001 (US)", MACHINE_SUPPORTS_SAVE )
-GAME( 1984, ninjakun,  0,        ninjakun, ninjakun, driver_device, 0,        ROT0,   "UPL (Taito license)", "Ninjakun Majou no Bouken", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, pkunwar,   0,        pkunwar,  pkunwar, nova2001_state,  pkunwar,  ROT0,   "UPL", "Penguin-Kun Wars (US)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, pkunwarj,  pkunwar,  pkunwar,  pkunwar, nova2001_state,  pkunwar,  ROT0,   "UPL", "Penguin-Kun Wars (Japan)", MACHINE_SUPPORTS_SAVE )
+//    YEAR, NAME,      PARENT,   MACHINE,  INPUT,    STATE,          INIT,     MONITOR,COMPANY,FULLNAME,FLAGS
+GAME( 1983, nova2001,  0,        nova2001, nova2001, nova2001_state, 0,        ROT0,   "UPL", "Nova 2001 (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, nova2001h, nova2001, nova2001, nova2001, nova2001_state, 0,        ROT0,   "UPL", "Nova 2001 (Japan, hack?)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, nova2001u, nova2001, nova2001, nova2001, nova2001_state, 0,        ROT0,   "UPL (Universal license)", "Nova 2001 (US)", MACHINE_SUPPORTS_SAVE )
+GAME( 1984, ninjakun,  0,        ninjakun, ninjakun, nova2001_state, 0,        ROT0,   "UPL (Taito license)", "Ninjakun Majou no Bouken", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, pkunwar,   0,        pkunwar,  pkunwar,  nova2001_state, pkunwar,  ROT0,   "UPL", "Penguin-Kun Wars (US)", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, pkunwarj,  pkunwar,  pkunwar,  pkunwar,  nova2001_state, pkunwar,  ROT0,   "UPL", "Penguin-Kun Wars (Japan)", MACHINE_SUPPORTS_SAVE )
 GAME( 1985, raiders5,  0,        raiders5, raiders5, nova2001_state, raiders5, ROT0,   "UPL", "Raiders5", MACHINE_SUPPORTS_SAVE )
 GAME( 1985, raiders5t, raiders5, raiders5, raiders5, nova2001_state, raiders5, ROT0,   "UPL (Taito license)", "Raiders5 (Japan)", MACHINE_SUPPORTS_SAVE )

@@ -177,9 +177,14 @@ Stephh's notes (based on the games Z80 code and some tests) :
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "sound/ay8910.h"
 #include "includes/wiz.h"
+
+#include "cpu/z80/z80.h"
+#include "machine/gen_latch.h"
+#include "machine/watchdog.h"
+#include "sound/ay8910.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 /***************************************************************************
@@ -324,11 +329,11 @@ static ADDRESS_MAP_START( kungfut_main_map, AS_PROGRAM, 8, wiz_state )
 	AM_RANGE(0xf008, 0xf008) AM_READ_PORT("DSW1")
 	AM_RANGE(0xf010, 0xf010) AM_READ_PORT("IN0")
 	AM_RANGE(0xf018, 0xf018) AM_READ_PORT("IN1")
-	AM_RANGE(0xf800, 0xf800) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0xf800, 0xf800) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0xf818, 0xf818) AM_WRITE(wiz_bgcolor_w)
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( decrypted_opcodes_map, AS_DECRYPTED_OPCODES, 8, wiz_state )
+static ADDRESS_MAP_START( decrypted_opcodes_map, AS_OPCODES, 8, wiz_state )
 	AM_RANGE(0x0000, 0xbfff) AM_ROM AM_SHARE("decrypted_opcodes")
 ADDRESS_MAP_END
 
@@ -341,7 +346,7 @@ ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( stinger_main_map, AS_PROGRAM, 8, wiz_state )
 //  AM_RANGE(0xf008, 0xf00f) AM_WRITENOP // ?
-	AM_RANGE(0xf800, 0xf800) AM_READ(watchdog_reset_r)
+	AM_RANGE(0xf800, 0xf800) AM_DEVREAD("watchdog", watchdog_timer_device, reset_r)
 	AM_RANGE(0xf808, 0xf808) AM_WRITE(stinger_explosion_w)
 	AM_RANGE(0xf80a, 0xf80a) AM_WRITE(stinger_shot_w)
 	AM_IMPORT_FROM( kungfut_main_map )
@@ -363,14 +368,14 @@ static ADDRESS_MAP_START( kungfut_sound_map, AS_PROGRAM, 8, wiz_state )
 	AM_RANGE(0x4000, 0x4001) AM_DEVWRITE("8910.3", ay8910_device, address_data_w)
 	AM_RANGE(0x5000, 0x5001) AM_DEVWRITE("8910.1", ay8910_device, address_data_w)
 	AM_RANGE(0x6000, 0x6001) AM_DEVWRITE("8910.2", ay8910_device, address_data_w)
-	AM_RANGE(0x7000, 0x7000) AM_READWRITE(soundlatch_byte_r, wiz_sound_nmi_mask_w)
+	AM_RANGE(0x7000, 0x7000) AM_DEVREAD("soundlatch", generic_latch_8_device, read) AM_WRITE(wiz_sound_nmi_mask_w)
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( stinger_sound_map, AS_PROGRAM, 8, wiz_state )
 	ADDRESS_MAP_GLOBAL_MASK(0x7fff)
 	AM_RANGE(0x0000, 0x1fff) AM_ROM
 	AM_RANGE(0x2000, 0x23ff) AM_RAM
-	AM_RANGE(0x3000, 0x3000) AM_READWRITE(soundlatch_byte_r, wiz_sound_nmi_mask_w)
+	AM_RANGE(0x3000, 0x3000) AM_DEVREAD("soundlatch", generic_latch_8_device, read) AM_WRITE(wiz_sound_nmi_mask_w)
 	AM_RANGE(0x4000, 0x4000) AM_WRITENOP // ?
 	AM_RANGE(0x5000, 0x5001) AM_DEVWRITE("8910.1", ay8910_device, address_data_w)
 	AM_RANGE(0x6000, 0x6001) AM_DEVWRITE("8910.2", ay8910_device, address_data_w)
@@ -779,7 +784,7 @@ INTERRUPT_GEN_MEMBER(wiz_state::wiz_sound_interrupt)
 		device.execute().set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
 
-static MACHINE_CONFIG_START( kungfut, wiz_state )
+static MACHINE_CONFIG_START( kungfut )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 18432000/6) /* 3.072 MHz ??? */
@@ -805,6 +810,8 @@ static MACHINE_CONFIG_START( kungfut, wiz_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_SOUND_ADD("8910.1", AY8910, 18432000/12)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.10)
@@ -840,6 +847,8 @@ static MACHINE_CONFIG_DERIVED( stinger, kungfut )
 	MCFG_CPU_MODIFY("audiocpu")
 	MCFG_CPU_PROGRAM_MAP(stinger_sound_map)
 
+	MCFG_WATCHDOG_ADD("watchdog")
+
 	/* video hardware */
 	MCFG_SCREEN_MODIFY("screen")
 	MCFG_SCREEN_UPDATE_DRIVER(wiz_state, screen_update_stinger)
@@ -855,7 +864,7 @@ MACHINE_CONFIG_END
 static MACHINE_CONFIG_DERIVED( scion, stinger )
 
 	MCFG_CPU_MODIFY("maincpu")
-	MCFG_DEVICE_REMOVE_ADDRESS_MAP(AS_DECRYPTED_OPCODES)
+	MCFG_DEVICE_REMOVE_ADDRESS_MAP(AS_OPCODES)
 
 	/* video hardware */
 	MCFG_SCREEN_MODIFY("screen")
@@ -1116,7 +1125,7 @@ ROM_END
 
 DRIVER_INIT_MEMBER(wiz_state,stinger)
 {
-	static const UINT8 swap_xor_table[4][4] =
+	static const uint8_t swap_xor_table[4][4] =
 	{
 		{ 7,3,5, 0xa0 },
 		{ 3,7,5, 0x88 },
@@ -1124,13 +1133,13 @@ DRIVER_INIT_MEMBER(wiz_state,stinger)
 		{ 5,7,3, 0x28 }
 	};
 
-	UINT8 *rom = memregion("maincpu")->base();
-	const UINT8 *tbl;
+	uint8_t *rom = memregion("maincpu")->base();
+	const uint8_t *tbl;
 
 	for (int a = 0x0000; a < 0xc000; a++)
 	{
 		int row;
-		UINT8 src;
+		uint8_t src;
 
 		if (a & 0x2040)
 		{
@@ -1152,12 +1161,12 @@ DRIVER_INIT_MEMBER(wiz_state,stinger)
 }
 
 
-GAME( 1983, stinger,  0,       stinger, stinger,  wiz_state,     stinger, ROT90,  "Seibu Denshi", "Stinger", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
-GAME( 1983, stinger2, stinger, stinger, stinger2, wiz_state,     stinger, ROT90,  "Seibu Denshi", "Stinger (prototype?)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
-GAME( 1984, scion,    0,       scion,   scion,    driver_device, 0,       ROT0,   "Seibu Denshi", "Scion", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
-GAME( 1984, scionc,   scion,   scion,   scion,    driver_device, 0,       ROT0,   "Seibu Denshi (Cinematronics license)", "Scion (Cinematronics)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
-GAME( 1984, kungfut,  0,       kungfut, kungfut,  driver_device, 0,       ROT0,   "Seibu Kaihatsu", "Kung-Fu Taikun (set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1984, kungfuta, kungfut, kungfut, kungfut,  driver_device, 0,       ROT0,   "Seibu Kaihatsu", "Kung-Fu Taikun (set 2)", MACHINE_SUPPORTS_SAVE ) /* board was a bootleg but set might still be original */
-GAME( 1985, wiz,      0,       wiz,     wiz,      driver_device, 0,       ROT270, "Seibu Kaihatsu", "Wiz", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, wizt,     wiz,     wiz,     wiz,      driver_device, 0,       ROT270, "Seibu Kaihatsu (Taito license)", "Wiz (Taito, set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, wizta,    wiz,     wiz,     wiz,      driver_device, 0,       ROT270, "Seibu Kaihatsu (Taito license)", "Wiz (Taito, set 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, stinger,  0,       stinger, stinger,  wiz_state, stinger, ROT90,  "Seibu Denshi", "Stinger", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
+GAME( 1983, stinger2, stinger, stinger, stinger2, wiz_state, stinger, ROT90,  "Seibu Denshi", "Stinger (prototype?)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
+GAME( 1984, scion,    0,       scion,   scion,    wiz_state, 0,       ROT0,   "Seibu Denshi", "Scion", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
+GAME( 1984, scionc,   scion,   scion,   scion,    wiz_state, 0,       ROT0,   "Seibu Denshi (Cinematronics license)", "Scion (Cinematronics)", MACHINE_IMPERFECT_SOUND | MACHINE_IMPERFECT_COLORS | MACHINE_SUPPORTS_SAVE )
+GAME( 1984, kungfut,  0,       kungfut, kungfut,  wiz_state, 0,       ROT0,   "Seibu Kaihatsu", "Kung-Fu Taikun (set 1)", MACHINE_SUPPORTS_SAVE | MACHINE_NODEVICE_MICROPHONE )
+GAME( 1984, kungfuta, kungfut, kungfut, kungfut,  wiz_state, 0,       ROT0,   "Seibu Kaihatsu", "Kung-Fu Taikun (set 2)", MACHINE_SUPPORTS_SAVE | MACHINE_NODEVICE_MICROPHONE ) /* board was a bootleg but set might still be original */
+GAME( 1985, wiz,      0,       wiz,     wiz,      wiz_state, 0,       ROT270, "Seibu Kaihatsu", "Wiz", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, wizt,     wiz,     wiz,     wiz,      wiz_state, 0,       ROT270, "Seibu Kaihatsu (Taito license)", "Wiz (Taito, set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, wizta,    wiz,     wiz,     wiz,      wiz_state, 0,       ROT270, "Seibu Kaihatsu (Taito license)", "Wiz (Taito, set 2)", MACHINE_SUPPORTS_SAVE )

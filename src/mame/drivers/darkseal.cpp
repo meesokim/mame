@@ -18,12 +18,16 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/darkseal.h"
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/h6280/h6280.h"
 #include "sound/2203intf.h"
-#include "sound/2151intf.h"
+#include "sound/ym2151.h"
 #include "sound/okim6295.h"
-#include "includes/darkseal.h"
+#include "screen.h"
+#include "speaker.h"
+
 
 /******************************************************************************/
 
@@ -34,7 +38,7 @@ WRITE16_MEMBER(darkseal_state::control_w)
 		m_spriteram->copy();
 		return;
 	case 8: /* Sound CPU write */
-		soundlatch_byte_w(space, 0, data & 0xff);
+		m_soundlatch->write(space, 0, data & 0xff);
 		m_audiocpu->set_input_line(0, HOLD_LINE);
 		return;
 	case 0xa: /* IRQ Ack (VBL) */
@@ -90,7 +94,7 @@ static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, darkseal_state )
 	AM_RANGE(0x110000, 0x110001) AM_DEVREADWRITE("ym2", ym2151_device, read, write)
 	AM_RANGE(0x120000, 0x120001) AM_DEVREADWRITE("oki1", okim6295_device, read, write)
 	AM_RANGE(0x130000, 0x130001) AM_DEVREADWRITE("oki2", okim6295_device, read, write)
-	AM_RANGE(0x140000, 0x140001) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x140000, 0x140001) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x1f0000, 0x1f1fff) AM_RAMBANK("bank8")
 	AM_RANGE(0x1fec00, 0x1fec01) AM_DEVWRITE("audiocpu", h6280_device, timer_w)
 	AM_RANGE(0x1ff400, 0x1ff403) AM_DEVWRITE("audiocpu", h6280_device, irq_status_w)
@@ -224,7 +228,7 @@ GFXDECODE_END
 
 /******************************************************************************/
 
-static MACHINE_CONFIG_START( darkseal, darkseal_state )
+static MACHINE_CONFIG_START( darkseal )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, XTAL_24MHz/2) /* Custom chip 59 */
@@ -282,6 +286,8 @@ static MACHINE_CONFIG_START( darkseal, darkseal_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, XTAL_32_22MHz/8)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.45)
 
@@ -290,10 +296,10 @@ static MACHINE_CONFIG_START( darkseal, darkseal_state )
 	MCFG_SOUND_ROUTE(0, "mono", 0.55)
 	MCFG_SOUND_ROUTE(1, "mono", 0.55)
 
-	MCFG_OKIM6295_ADD("oki1", XTAL_32_22MHz/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", XTAL_32_22MHz/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 
-	MCFG_OKIM6295_ADD("oki2", XTAL_32_22MHz/16, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki2", XTAL_32_22MHz/16, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 MACHINE_CONFIG_END
 
@@ -458,7 +464,7 @@ ROM_END
 
 DRIVER_INIT_MEMBER(darkseal_state,darkseal)
 {
-	UINT8 *RAM = memregion("maincpu")->base();
+	uint8_t *RAM = memregion("maincpu")->base();
 	int i;
 
 	for (i=0x00000; i<0x80000; i++)

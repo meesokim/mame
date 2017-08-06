@@ -6,6 +6,7 @@
 //
 //============================================================
 
+#include "emu.h"
 #include "memorywininfo.h"
 
 #include "debugviewinfo.h"
@@ -16,14 +17,14 @@
 
 
 memorywin_info::memorywin_info(debugger_windows_interface &debugger) :
-	editwin_info(debugger, false, "Memory", NULL),
-	m_combownd(NULL)
+	editwin_info(debugger, false, "Memory", nullptr),
+	m_combownd(nullptr)
 {
 	if (!window())
 		return;
 
 	m_views[0].reset(global_alloc(memoryview_info(debugger, *this, window())));
-	if ((m_views[0] == NULL) || !m_views[0]->is_valid())
+	if ((m_views[0] == nullptr) || !m_views[0]->is_valid())
 	{
 		m_views[0].reset();
 		return;
@@ -282,7 +283,7 @@ void memorywin_info::draw_contents(HDC dc)
 }
 
 
-void memorywin_info::process_string(char const *string)
+void memorywin_info::process_string(const std::string &string)
 {
 	// set the string to the memory view
 	downcast<memoryview_info *>(m_views[0].get())->set_expression(string);

@@ -14,11 +14,13 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/scramble.h"
+
 #include "cpu/z80/z80.h"
 #include "machine/7474.h"
 #include "sound/flt_rc.h"
 #include "sound/ay8910.h"
-#include "includes/scramble.h"
+#include "speaker.h"
 
 #define AD2083_TMS5110_CLOCK        XTAL_640kHz
 
@@ -121,21 +123,18 @@ WRITE8_MEMBER(scramble_state::hotshock_sh_irqtrigger_w)
 READ8_MEMBER( scramble_state::hotshock_soundlatch_r )
 {
 	m_audiocpu->set_input_line(0, CLEAR_LINE);
-	return soundlatch_byte_r(m_audiocpu->space(AS_PROGRAM),0);
+	return m_soundlatch->read(m_audiocpu->space(AS_PROGRAM),0);
 }
 
 static void filter_w(device_t *device, int data)
 {
-	int C;
-
-
-	C = 0;
+	int C = 0;
 	if (data & 1)
 		C += 220000;    /* 220000pF = 0.220uF */
 	if (data & 2)
 		C +=  47000;    /*  47000pF = 0.047uF */
-	if (device != nullptr)
-		dynamic_cast<filter_rc_device*>(device)->filter_rc_set_RC(FLT_RC_LOWPASS, 1000, 5100, 0, CAP_P(C));
+	if (device)
+		downcast<filter_rc_device*>(device)->filter_rc_set_RC(filter_rc_device::LOWPASS, 1000, 5100, 0, CAP_P(C));
 }
 
 WRITE8_MEMBER(scramble_state::scramble_filter_w)
@@ -291,7 +290,7 @@ static ADDRESS_MAP_START( ad2083_sound_io_map, AS_IO, 8, scramble_state )
 	AM_RANGE(0x80, 0x80) AM_DEVWRITE("ay2", ay8910_device, address_w)
 ADDRESS_MAP_END
 
-MACHINE_CONFIG_FRAGMENT( ad2083_audio )
+MACHINE_CONFIG_START( ad2083_audio )
 
 	MCFG_CPU_ADD("audiocpu", Z80, 14318000/8)   /* 1.78975 MHz */
 	MCFG_CPU_PROGRAM_MAP(ad2083_sound_map)
@@ -312,6 +311,9 @@ MACHINE_CONFIG_FRAGMENT( ad2083_audio )
 	MCFG_TMSPROM_CTL_CB(DEVWRITE8("tms", tms5110_device, ctl_w))      /* tms ctl func */
 
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ay1", AY8910, 14318000/8)
 	MCFG_AY8910_PORT_A_READ_CB(READ8(scramble_state, scramble_portB_r))
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)

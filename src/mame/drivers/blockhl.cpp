@@ -18,13 +18,18 @@
 *******************************************************************************/
 
 #include "emu.h"
+#include "includes/konamipt.h"
+
 #include "cpu/m6809/konami.h"
 #include "cpu/z80/z80.h"
 #include "machine/bankdev.h"
+#include "machine/gen_latch.h"
+#include "machine/watchdog.h"
+#include "sound/ym2151.h"
 #include "video/k052109.h"
 #include "video/k051960.h"
-#include "sound/2151intf.h"
-#include "includes/konamipt.h"
+
+#include "speaker.h"
 
 
 //**************************************************************************
@@ -45,7 +50,7 @@ public:
 
 	K052109_CB_MEMBER(tile_callback);
 	K051960_CB_MEMBER(sprite_callback);
-	UINT32 screen_update_blockhl(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_blockhl(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 	DECLARE_READ8_MEMBER(k052109_051960_r);
 	DECLARE_WRITE8_MEMBER(k052109_051960_w);
 
@@ -71,9 +76,9 @@ private:
 //**************************************************************************
 
 static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8, blockhl_state )
-	AM_RANGE(0x1f84, 0x1f84) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0x1f84, 0x1f84) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0x1f88, 0x1f88) AM_WRITE(sound_irq_w)
-	AM_RANGE(0x1f8c, 0x1f8c) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x1f8c, 0x1f8c) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x1f94, 0x1f94) AM_READ_PORT("DSW3")
 	AM_RANGE(0x1f95, 0x1f95) AM_READ_PORT("P1")
 	AM_RANGE(0x1f96, 0x1f96) AM_READ_PORT("P2")
@@ -94,7 +99,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( audio_map, AS_PROGRAM, 8, blockhl_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x87ff) AM_RAM
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xc000, 0xc001) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0xe00c, 0xe00d) AM_WRITENOP // leftover from missing 007232?
 ADDRESS_MAP_END
@@ -120,7 +125,7 @@ K051960_CB_MEMBER( blockhl_state::sprite_callback )
 	*color = sprite_colorbase + (*color & 0x0f);
 }
 
-UINT32 blockhl_state::screen_update_blockhl(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+uint32_t blockhl_state::screen_update_blockhl(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
 	screen.priority().fill(0, cliprect);
 
@@ -265,7 +270,7 @@ INPUT_PORTS_END
 //  MACHINE DEFINTIONS
 //**************************************************************************
 
-static MACHINE_CONFIG_START( blockhl, blockhl_state )
+static MACHINE_CONFIG_START( blockhl )
 	// basic machine hardware
 	MCFG_CPU_ADD("maincpu", KONAMI, XTAL_24MHz/8)     // Konami 052526
 	MCFG_CPU_PROGRAM_MAP(main_map)
@@ -280,6 +285,8 @@ static MACHINE_CONFIG_START( blockhl, blockhl_state )
 
 	MCFG_CPU_ADD("audiocpu", Z80, XTAL_3_579545MHz)
 	MCFG_CPU_PROGRAM_MAP(audio_map)
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	// video hardware
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -306,6 +313,8 @@ static MACHINE_CONFIG_START( blockhl, blockhl_state )
 
 	// sound hardware
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_YM2151_ADD("ymsnd", XTAL_3_579545MHz)
 	MCFG_SOUND_ROUTE(0, "mono", 0.60)
@@ -369,5 +378,5 @@ ROM_END
 //**************************************************************************
 
 //    YEAR  NAME     PARENT   MACHINE  INPUT    CLASS          INIT  ROT   COMPANY   FULLNAME          FLAGS
-GAME( 1989, blockhl, 0,       blockhl, blockhl, driver_device, 0,    ROT0, "Konami", "Block Hole",     MACHINE_SUPPORTS_SAVE )
-GAME( 1989, quarth,  blockhl, blockhl, blockhl, driver_device, 0,    ROT0, "Konami", "Quarth (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1989, blockhl, 0,       blockhl, blockhl, blockhl_state, 0,    ROT0, "Konami", "Block Hole",     MACHINE_SUPPORTS_SAVE )
+GAME( 1989, quarth,  blockhl, blockhl, blockhl, blockhl_state, 0,    ROT0, "Konami", "Quarth (Japan)", MACHINE_SUPPORTS_SAVE )

@@ -7,14 +7,19 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "sound/2151intf.h"
-#include "machine/nvram.h"
-#include "video/hd44780.h"
-#include "machine/i8251.h"
-#include "machine/clock.h"
+
 #include "bus/midi/midi.h"
+#include "cpu/z80/z80.h"
+#include "machine/clock.h"
+#include "machine/i8251.h"
+#include "machine/nvram.h"
+#include "sound/ym2151.h"
+#include "video/hd44780.h"
+
 #include "rendlay.h"
+#include "screen.h"
+#include "speaker.h"
+
 #include "fb01.lh"
 
 
@@ -42,6 +47,7 @@ public:
 	virtual void machine_reset() override;
 
 	DECLARE_PALETTE_INIT(fb01);
+	HD44780_PIXEL_UPDATE(fb01_pixel_update);
 
 private:
 	required_device<z80_device> m_maincpu;
@@ -150,7 +156,7 @@ void fb01_state::update_int()
 }
 
 
-static HD44780_PIXEL_UPDATE(fb01_pixel_update)
+HD44780_PIXEL_UPDATE(fb01_state::fb01_pixel_update)
 {
 	if ( pos < 8 && line < 2 )
 	{
@@ -166,7 +172,7 @@ PALETTE_INIT_MEMBER(fb01_state, fb01)
 }
 
 
-static MACHINE_CONFIG_START( fb01, fb01_state )
+static MACHINE_CONFIG_START( fb01 )
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, XTAL_12MHz/2)
 	MCFG_CPU_PROGRAM_MAP(fb01_mem)
@@ -189,7 +195,7 @@ static MACHINE_CONFIG_START( fb01, fb01_state )
 
 	MCFG_HD44780_ADD("hd44780")
 	MCFG_HD44780_LCD_SIZE(2, 8)   // 2x8 displayed as 1x16
-	MCFG_HD44780_PIXEL_UPDATE_CB(fb01_pixel_update)
+	MCFG_HD44780_PIXEL_UPDATE_CB(fb01_state,fb01_pixel_update)
 
 	MCFG_DEVICE_ADD("upd71051", I8251, XTAL_4MHz)
 	MCFG_I8251_RXRDY_HANDLER(WRITELINE(fb01_state, upd71051_rxrdy_w))
@@ -225,5 +231,5 @@ ROM_END
 
 /* Driver */
 
-/*    YEAR  NAME  PARENT  COMPAT   MACHINE  INPUT  INIT                  COMPANY   FULLNAME  FLAGS */
-CONS( 1986, fb01, 0,      0,       fb01,    fb01,  driver_device,   0,   "Yamaha", "FB-01",  MACHINE_SUPPORTS_SAVE )
+//    YEAR  NAME  PARENT  COMPAT   MACHINE  INPUT  STATE        INIT  COMPANY   FULLNAME  FLAGS
+CONS( 1986, fb01, 0,      0,       fb01,    fb01,  fb01_state,  0,    "Yamaha", "FB-01",  MACHINE_SUPPORTS_SAVE )

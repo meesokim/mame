@@ -120,9 +120,12 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6502/m6502.h"
-#include "sound/pokey.h"
 #include "includes/ccastles.h"
+
+#include "cpu/m6502/m6502.h"
+#include "machine/watchdog.h"
+#include "sound/pokey.h"
+#include "speaker.h"
 
 
 #define MASTER_CLOCK    (10000000)
@@ -333,7 +336,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8, ccastles_state )
 	AM_RANGE(0x9c80, 0x9cff) AM_WRITE(ccastles_hscroll_w)
 	AM_RANGE(0x9d00, 0x9d7f) AM_WRITE(ccastles_vscroll_w)
 	AM_RANGE(0x9d80, 0x9dff) AM_WRITE(irq_ack_w)
-	AM_RANGE(0x9e00, 0x9e7f) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x9e00, 0x9e7f) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x9e80, 0x9e81) AM_MIRROR(0x0078) AM_WRITE(led_w)
 	AM_RANGE(0x9e82, 0x9e83) AM_MIRROR(0x0078) AM_WRITE(nvram_store_w)
 	AM_RANGE(0x9e85, 0x9e86) AM_MIRROR(0x0078) AM_WRITE(ccounter_w)
@@ -359,9 +362,11 @@ static INPUT_PORTS_START( ccastles )
 	PORT_BIT( 0x04, IP_ACTIVE_LOW, IPT_SERVICE1 )
 	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_TILT )
 	PORT_SERVICE( 0x10, IP_ACTIVE_LOW )
-	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, ccastles_state,get_vblank, NULL)
-	PORT_BIT( 0x40, IP_ACTIVE_LOW, IPT_BUTTON1 )                    /* 1p Jump, non-cocktail start1 */
-	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_BUTTON1 ) PORT_PLAYER(2)     /* 2p Jump, non-cocktail start2 */
+	PORT_BIT( 0x20, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, ccastles_state,get_vblank, nullptr)
+	PORT_BIT( 0x40, IP_ACTIVE_LOW, IPT_BUTTON1 ) PORT_NAME("Left Jump/1P Start Upright")    PORT_CONDITION("IN1",0x20,EQUALS,0x00)  /* left Jump, non-cocktail start1 */
+	PORT_BIT( 0x40, IP_ACTIVE_LOW, IPT_BUTTON1 ) PORT_NAME("1P Jump")           PORT_CONDITION("IN1",0x20,EQUALS,0x20)  /* 1p Jump, cocktail */
+	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_BUTTON2 ) PORT_NAME("Right Jump/2P Start Upright")   PORT_CONDITION("IN1",0x20,EQUALS,0x00)  /* right Jump, non-cocktail start2 */
+	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_BUTTON1 ) PORT_COCKTAIL PORT_NAME("2P Jump") PORT_CONDITION("IN1",0x20,EQUALS,0x20)  /* 2p Jump, cocktail */
 
 	PORT_START("IN1")   /* IN1 */
 	PORT_DIPNAME( 0x01, 0x01, DEF_STR( Unknown ) )
@@ -373,8 +378,8 @@ static INPUT_PORTS_START( ccastles )
 	PORT_DIPNAME( 0x04, 0x04, DEF_STR( Unknown ) )
 	PORT_DIPSETTING(    0x04, DEF_STR( Off ) )
 	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
-	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_START1 )             /* cocktail only */
-	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_START2 )             /* cocktail only */
+	PORT_BIT( 0x08, IP_ACTIVE_LOW, IPT_START1 ) PORT_NAME("1P Start Cocktail")  /* cocktail only */
+	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_START2 ) PORT_NAME("2P Start Cocktail")  /* cocktail only */
 	PORT_DIPNAME( 0x20, 0x00, DEF_STR( Cabinet ) )
 	PORT_DIPSETTING(    0x00, DEF_STR( Upright ) )
 	PORT_DIPSETTING(    0x20, DEF_STR( Cocktail ) )
@@ -387,10 +392,10 @@ static INPUT_PORTS_START( ccastles )
 	PORT_BIT( 0xff, 0x00, IPT_TRACKBALL_X ) PORT_SENSITIVITY(10) PORT_KEYDELTA(30)
 
 	PORT_START("LETA2")
-	PORT_BIT( 0xff, 0x00, IPT_TRACKBALL_Y ) PORT_COCKTAIL PORT_SENSITIVITY(10) PORT_KEYDELTA(30) PORT_REVERSE
+	PORT_BIT( 0xff, 0x00, IPT_TRACKBALL_Y ) PORT_COCKTAIL PORT_SENSITIVITY(10) PORT_KEYDELTA(30) PORT_REVERSE   /* cocktail only */
 
 	PORT_START("LETA3")
-	PORT_BIT( 0xff, 0x00, IPT_TRACKBALL_X ) PORT_COCKTAIL PORT_SENSITIVITY(10) PORT_KEYDELTA(30)
+	PORT_BIT( 0xff, 0x00, IPT_TRACKBALL_X ) PORT_COCKTAIL PORT_SENSITIVITY(10) PORT_KEYDELTA(30)            /* cocktail only */
 INPUT_PORTS_END
 
 
@@ -448,13 +453,14 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( ccastles, ccastles_state )
+static MACHINE_CONFIG_START( ccastles )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, MASTER_CLOCK/8)
 	MCFG_CPU_PROGRAM_MAP(main_map)
 
-	MCFG_WATCHDOG_VBLANK_INIT(8)
+	MCFG_WATCHDOG_ADD("watchdog")
+	MCFG_WATCHDOG_VBLANK_INIT("screen", 8)
 
 	MCFG_X2212_ADD_AUTOSAVE("nvram_4b")
 	MCFG_X2212_ADD_AUTOSAVE("nvram_4a")
@@ -658,11 +664,11 @@ ROM_END
  *
  *************************************/
 
-GAME( 1983, ccastles,  0,        ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 4)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastlesg, ccastles, ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 3, German)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastlesp, ccastles, ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 3, Spanish)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastlesf, ccastles, ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 3, French)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastles3, ccastles, ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 3)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastles2, ccastles, ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastles1, ccastles, ccastles, ccastles, driver_device, 0, ROT0, "Atari", "Crystal Castles (version 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, ccastlesj, ccastles, ccastles, ccastlesj, driver_device,0, ROT0, "Atari", "Crystal Castles (joystick version)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastles,  0,        ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 4)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastlesg, ccastles, ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 3, German)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastlesp, ccastles, ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 3, Spanish)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastlesf, ccastles, ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 3, French)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastles3, ccastles, ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastles2, ccastles, ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastles1, ccastles, ccastles, ccastles, ccastles_state, 0, ROT0, "Atari", "Crystal Castles (version 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, ccastlesj, ccastles, ccastles, ccastlesj,ccastles_state, 0, ROT0, "Atari", "Crystal Castles (joystick version)", MACHINE_SUPPORTS_SAVE )

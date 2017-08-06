@@ -76,10 +76,12 @@
 
 
 #include "emu.h"
+#include "includes/foodf.h"
 #include "cpu/m68000/m68000.h"
 #include "machine/atarigen.h"
+#include "machine/watchdog.h"
 #include "sound/pokey.h"
-#include "includes/foodf.h"
+#include "speaker.h"
 
 
 #define MASTER_CLOCK        12096000
@@ -124,7 +126,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(foodf_state::scanline_update_timer)
 	   mystery yet */
 
 	/* INT 1 is on 32V */
-	scanline_int_gen(m_maincpu);
+	scanline_int_gen(*m_maincpu);
 
 	/* advance to the next interrupt */
 	scanline += 64;
@@ -218,7 +220,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16, foodf_state )
 	AM_RANGE(0x948000, 0x948001) AM_MIRROR(0x023ffe) AM_READ_PORT("SYSTEM") AM_WRITE8(digital_w, 0x00ff)
 	AM_RANGE(0x950000, 0x9501ff) AM_MIRROR(0x023e00) AM_WRITE(foodf_paletteram_w) AM_SHARE("paletteram")
 	AM_RANGE(0x954000, 0x954001) AM_MIRROR(0x023ffe) AM_WRITE(nvram_recall_w)
-	AM_RANGE(0x958000, 0x958001) AM_MIRROR(0x023ffe) AM_READWRITE(watchdog_reset16_r, watchdog_reset16_w)
+	AM_RANGE(0x958000, 0x958001) AM_MIRROR(0x023ffe) AM_DEVREADWRITE("watchdog", watchdog_timer_device, reset16_r, reset16_w)
 	AM_RANGE(0xa40000, 0xa4001f) AM_MIRROR(0x03ffe0) AM_DEVREADWRITE8("pokey2", pokey_device, read, write, 0x00ff)
 	AM_RANGE(0xa80000, 0xa8001f) AM_MIRROR(0x03ffe0) AM_DEVREADWRITE8("pokey1", pokey_device, read, write, 0x00ff)
 	AM_RANGE(0xac0000, 0xac001f) AM_MIRROR(0x03ffe0) AM_DEVREADWRITE8("pokey3", pokey_device, read, write, 0x00ff)
@@ -333,7 +335,7 @@ READ8_MEMBER(foodf_state::pot_r)
  *
  *************************************/
 
-static MACHINE_CONFIG_START( foodf, foodf_state )
+static MACHINE_CONFIG_START( foodf )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, MASTER_CLOCK/2)
@@ -345,7 +347,8 @@ static MACHINE_CONFIG_START( foodf, foodf_state )
 
 	MCFG_X2212_ADD_AUTOSAVE("nvram")
 
-	MCFG_WATCHDOG_VBLANK_INIT(8)
+	MCFG_WATCHDOG_ADD("watchdog")
+	MCFG_WATCHDOG_VBLANK_INIT("screen", 8)
 
 	MCFG_TIMER_DRIVER_ADD("scan_timer", foodf_state, scanline_update_timer)
 
@@ -502,7 +505,7 @@ ROM_END
  *
  *************************************/
 
-GAME( 1982, foodf,  0,     foodf, foodf, driver_device, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (rev 3)", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, foodf2, foodf, foodf, foodf, driver_device, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (rev 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, foodf1, foodf, foodf, foodf, driver_device, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (rev 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, foodfc, foodf, foodf, foodf, driver_device, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (cocktail)", MACHINE_SUPPORTS_SAVE )
+GAME( 1982, foodf,  0,     foodf, foodf, foodf_state, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (rev 3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1982, foodf2, foodf, foodf, foodf, foodf_state, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (rev 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1982, foodf1, foodf, foodf, foodf, foodf_state, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (rev 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1982, foodfc, foodf, foodf, foodf, foodf_state, 0, ROT0, "General Computer Corporation (Atari license)", "Food Fight (cocktail)", MACHINE_SUPPORTS_SAVE )

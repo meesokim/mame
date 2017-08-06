@@ -6,7 +6,9 @@
 
 *************************************************************************/
 
+#include "machine/watchdog.h"
 #include "sound/discrete.h"
+#include "screen.h"
 
 /* Discrete Sound Input Nodes */
 #define DRAGRACE_SCREECH1_EN    NODE_01
@@ -33,28 +35,33 @@ public:
 		m_position_ram(*this, "position_ram"),
 		m_discrete(*this, "discrete"),
 		m_maincpu(*this, "maincpu"),
+		m_watchdog(*this, "watchdog"),
 		m_gfxdecode(*this, "gfxdecode"),
-		m_screen(*this, "screen") { }
+		m_screen(*this, "screen")
+	{
+	}
 
 	/* memory pointers */
-	required_shared_ptr<UINT8> m_playfield_ram;
-	required_shared_ptr<UINT8> m_position_ram;
+	required_shared_ptr<uint8_t> m_playfield_ram;
+	required_shared_ptr<uint8_t> m_position_ram;
 
 	/* video-related */
 	tilemap_t  *m_bg_tilemap;
 
 	/* misc */
-	unsigned  m_misc_flags;
 	int       m_gear[2];
 
 	/* devices */
 	required_device<discrete_device> m_discrete;
 	required_device<cpu_device> m_maincpu;
+	required_device<watchdog_timer_device> m_watchdog;
 	required_device<gfxdecode_device> m_gfxdecode;
 	required_device<screen_device> m_screen;
 
-	DECLARE_WRITE8_MEMBER(dragrace_misc_w);
-	DECLARE_WRITE8_MEMBER(dragrace_misc_clear_w);
+	DECLARE_WRITE8_MEMBER(speed1_w);
+	DECLARE_WRITE8_MEMBER(speed2_w);
+	DECLARE_WRITE_LINE_MEMBER(p1_start_w);
+	DECLARE_WRITE_LINE_MEMBER(p2_start_w);
 	DECLARE_READ8_MEMBER(dragrace_input_r);
 	DECLARE_READ8_MEMBER(dragrace_steering_r);
 	DECLARE_READ8_MEMBER(dragrace_scanline_r);
@@ -63,7 +70,7 @@ public:
 	virtual void machine_reset() override;
 	virtual void video_start() override;
 	DECLARE_PALETTE_INIT(dragrace);
-	UINT32 screen_update_dragrace(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_dragrace(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 	TIMER_DEVICE_CALLBACK_MEMBER(dragrace_frame_callback);
 	void dragrace_update_misc_flags( address_space &space );
 };

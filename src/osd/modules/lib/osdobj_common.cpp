@@ -25,6 +25,9 @@ const options_entry osd_options::s_option_entries[] =
 	{ nullptr,                                nullptr,          OPTION_HEADER,    "OSD FONT OPTIONS" },
 	{ OSD_FONT_PROVIDER,                      OSDOPTVAL_AUTO,   OPTION_STRING,    "provider for ui font: " },
 
+	{ nullptr,                                nullptr,          OPTION_HEADER,    "OSD OUTPUT OPTIONS" },
+	{ OSD_OUTPUT_PROVIDER,                    OSDOPTVAL_AUTO,   OPTION_STRING,    "provider for output: " },
+
 	{ nullptr,                                nullptr,          OPTION_HEADER,    "OSD INPUT OPTIONS" },
 	{ OSD_KEYBOARDINPUT_PROVIDER,             OSDOPTVAL_AUTO,   OPTION_STRING,    "provider for keyboard input: " },
 	{ OSD_MOUSEINPUT_PROVIDER,                OSDOPTVAL_AUTO,   OPTION_STRING,    "provider for mouse input: " },
@@ -53,6 +56,7 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_MAXIMIZE ";max",              "1",              OPTION_BOOLEAN,   "default to maximized windows; otherwise, windows will be minimized" },
 	{ OSDOPTION_WAITVSYNC ";vs",              "0",              OPTION_BOOLEAN,   "enable waiting for the start of VBLANK before flipping screens; reduces tearing effects" },
 	{ OSDOPTION_SYNCREFRESH ";srf",           "0",              OPTION_BOOLEAN,   "enable using the start of VBLANK for throttling instead of the game time" },
+	{ OSD_MONITOR_PROVIDER,                   OSDOPTVAL_AUTO,   OPTION_STRING,    "monitor discovery method" },
 
 	// per-window options
 	{ nullptr,                                nullptr,          OPTION_HEADER,    "OSD PER-WINDOW VIDEO OPTIONS" },
@@ -123,6 +127,13 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_SOUND,                        OSDOPTVAL_AUTO,   OPTION_STRING,    "sound output method: " },
 	{ OSDOPTION_AUDIO_LATENCY "(1-5)",        "2",              OPTION_INTEGER,   "set audio latency (increase to reduce glitches, decrease for responsiveness)" },
 
+#ifndef NO_USE_PORTAUDIO
+	{ nullptr,                                nullptr,          OPTION_HEADER,    "PORTAUDIO OPTIONS" },
+	{ OSDOPTION_PA_API,                       OSDOPTVAL_NONE,   OPTION_STRING,    "PortAudio API" },
+	{ OSDOPTION_PA_DEVICE,                    OSDOPTVAL_NONE,   OPTION_STRING,    "PortAudio device" },
+	{ OSDOPTION_PA_LATENCY "(0-0.25)",        "0",              OPTION_FLOAT,     "suggested latency in seconds, 0 for default" },
+#endif
+
 #ifdef SDLMAME_MACOSX
 	{ nullptr,                                nullptr,          OPTION_HEADER,    "CoreAudio-SPECIFIC OPTIONS" },
 	{ OSDOPTION_AUDIO_OUTPUT,                 OSDOPTVAL_AUTO,   OPTION_STRING,    "Audio output device" },
@@ -144,17 +155,20 @@ const options_entry osd_options::s_option_entries[] =
 	{ OSDOPTION_BGFX_DEBUG,                   "0",               OPTION_BOOLEAN, "enable BGFX debugging statistics" },
 	{ OSDOPTION_BGFX_SCREEN_CHAINS,           "default",         OPTION_STRING, "comma-delimited list of screen chain JSON names, colon-delimited per-window" },
 	{ OSDOPTION_BGFX_SHADOW_MASK,             "slot-mask.png",   OPTION_STRING, "shadow mask texture name" },
+	{ OSDOPTION_BGFX_AVI_NAME,                OSDOPTVAL_AUTO,    OPTION_STRING, "filename for BGFX output logging" },
 
 		// End of list
 	{ nullptr }
 };
 
 osd_options::osd_options()
-: cli_options()
+: emu_options()
 {
 	add_entries(osd_options::s_option_entries);
 }
 
+// Window list
+std::list<std::shared_ptr<osd_window>> osd_common_t::s_window_list;
 
 //-------------------------------------------------
 //  osd_interface - constructor
@@ -171,7 +185,10 @@ osd_common_t::osd_common_t(osd_options &options)
 		m_keyboard_input(nullptr),
 		m_mouse_input(nullptr),
 		m_lightgun_input(nullptr),
-		m_joystick_input(nullptr)
+		m_joystick_input(nullptr),
+		m_output(nullptr),
+		m_monitor_module(nullptr),
+		m_watchdog(nullptr)
 {
 	osd_output::push(this);
 }
@@ -183,7 +200,7 @@ osd_common_t::osd_common_t(osd_options &options)
 osd_common_t::~osd_common_t()
 {
 	for(unsigned int i= 0; i < m_video_names.size(); ++i)
-		osd_free(const_cast<char*>(m_video_names[i]));
+		free(const_cast<char*>(m_video_names[i]));
 	//m_video_options,reset();
 	osd_output::pop(this);
 }
@@ -203,7 +220,14 @@ void osd_common_t::register_options()
 	REGISTER_MODULE(m_mod_man, SOUND_COREAUDIO);
 	REGISTER_MODULE(m_mod_man, SOUND_JS);
 	REGISTER_MODULE(m_mod_man, SOUND_SDL);
+#ifndef NO_USE_PORTAUDIO
+	REGISTER_MODULE(m_mod_man, SOUND_PORTAUDIO);
+#endif
 	REGISTER_MODULE(m_mod_man, SOUND_NONE);
+
+	REGISTER_MODULE(m_mod_man, MONITOR_SDL);
+	REGISTER_MODULE(m_mod_man, MONITOR_WIN32);
+	REGISTER_MODULE(m_mod_man, MONITOR_DXGI);
 
 #ifdef SDLMAME_MACOSX
 	REGISTER_MODULE(m_mod_man, DEBUG_OSX);
@@ -211,7 +235,7 @@ void osd_common_t::register_options()
 #ifndef OSD_MINI
 	REGISTER_MODULE(m_mod_man, DEBUG_WINDOWS);
 	REGISTER_MODULE(m_mod_man, DEBUG_QT);
-	REGISTER_MODULE(m_mod_man, DEBUG_INTERNAL);
+	REGISTER_MODULE(m_mod_man, DEBUG_IMGUI);
 	REGISTER_MODULE(m_mod_man, DEBUG_NONE);
 #endif
 
@@ -228,6 +252,7 @@ void osd_common_t::register_options()
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_RAWINPUT);
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_DINPUT);
 	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_WIN32);
+	REGISTER_MODULE(m_mod_man, KEYBOARDINPUT_UWP);
 	REGISTER_MODULE(m_mod_man, KEYBOARD_NONE);
 
 	REGISTER_MODULE(m_mod_man, MOUSEINPUT_SDL);
@@ -237,6 +262,7 @@ void osd_common_t::register_options()
 	REGISTER_MODULE(m_mod_man, MOUSE_NONE);
 
 	REGISTER_MODULE(m_mod_man, LIGHTGUN_X11);
+	REGISTER_MODULE(m_mod_man, LIGHTGUNINPUT_RAWINPUT);
 	REGISTER_MODULE(m_mod_man, LIGHTGUNINPUT_WIN32);
 	REGISTER_MODULE(m_mod_man, LIGHTGUN_NONE);
 
@@ -244,14 +270,28 @@ void osd_common_t::register_options()
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_WINHYBRID);
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_DINPUT);
 	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_XINPUT);
+	REGISTER_MODULE(m_mod_man, JOYSTICKINPUT_UWP);
 	REGISTER_MODULE(m_mod_man, JOYSTICK_NONE);
+
+	REGISTER_MODULE(m_mod_man, OUTPUT_NONE);
+	REGISTER_MODULE(m_mod_man, OUTPUT_CONSOLE);
+	REGISTER_MODULE(m_mod_man, OUTPUT_NETWORK);
+	REGISTER_MODULE(m_mod_man, OUTPUT_WIN32);
+
 
 	// after initialization we know which modules are supported
 
 	const char *names[20];
 	int num;
-	m_mod_man.get_module_names(OSD_FONT_PROVIDER, 20, &num, names);
 	std::vector<const char *> dnames;
+
+	m_mod_man.get_module_names(OSD_MONITOR_PROVIDER, 20, &num, names);
+	for (int i = 0; i < num; i++)
+		dnames.push_back(names[i]);
+	update_option(OSD_MONITOR_PROVIDER, dnames);
+
+	m_mod_man.get_module_names(OSD_FONT_PROVIDER, 20, &num, names);
+	dnames.clear();
 	for (int i = 0; i < num; i++)
 		dnames.push_back(names[i]);
 	update_option(OSD_FONT_PROVIDER, dnames);
@@ -302,16 +342,19 @@ void osd_common_t::register_options()
 		dnames.push_back(names[i]);
 	update_option(OSD_DEBUG_PROVIDER, dnames);
 
+	m_mod_man.get_module_names(OSD_OUTPUT_PROVIDER, 20, &num, names);
+	dnames.clear();
+	for (int i = 0; i < num; i++)
+		dnames.push_back(names[i]);
+	update_option(OSD_OUTPUT_PROVIDER, dnames);
+
 	// Register video options and update options
 	video_options_add("none", nullptr);
-#if USE_OPENGL
-	video_options_add("opengl", nullptr);
-#endif
 	video_register();
 	update_option(OSDOPTION_VIDEO, m_video_names);
 }
 
-void osd_common_t::update_option(const char * key, std::vector<const char *> &values)
+void osd_common_t::update_option(const char * key, std::vector<const char *> &values) const
 {
 	std::string current_value(m_options.description(key));
 	std::string new_option_value("");
@@ -404,7 +447,17 @@ void osd_common_t::init(running_machine &machine)
 		set_verbose(true);
 
 	// ensure we get called on the way out
-	machine.add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(FUNC(osd_common_t::osd_exit), this));
+	machine.add_notifier(MACHINE_NOTIFY_EXIT, machine_notify_delegate(&osd_common_t::osd_exit, this));
+
+
+	/* now setup watchdog */
+	int watchdog_timeout = options.watchdog();
+
+	if (watchdog_timeout != 0)
+	{
+		m_watchdog = std::make_unique<osd_watchdog>();
+		m_watchdog->setTimeout(watchdog_timeout);
+	}
 }
 
 
@@ -422,6 +475,11 @@ void osd_common_t::update(bool skip_redraw)
 	// irregular intervals in some circumstances (e.g., multi-screen games
 	// or games with asynchronous updates).
 	//
+	if (m_watchdog != nullptr)
+		m_watchdog->reset();
+
+	update_slider_list();
+
 }
 
 
@@ -468,7 +526,7 @@ void osd_common_t::debugger_update()
 //  stream
 //-------------------------------------------------
 
-void osd_common_t::update_audio_stream(const INT16 *buffer, int samples_this_frame)
+void osd_common_t::update_audio_stream(const int16_t *buffer, int samples_this_frame)
 {
 	//
 	// This method is called whenever the system has new audio data to stream.
@@ -522,10 +580,22 @@ void osd_common_t::customize_input_type_list(simple_list<input_type_entry> &type
 //  list of OS-dependent slider values.
 //-------------------------------------------------
 
-slider_state* osd_common_t::get_slider_list()
+std::vector<ui::menu_item> osd_common_t::get_slider_list()
 {
-	return nullptr;
+	return m_sliders;
 }
+
+
+//-------------------------------------------------
+//  add_audio_to_recording - append audio samples
+//  to an AVI recording if one is active
+//-------------------------------------------------
+
+void osd_common_t::add_audio_to_recording(const int16_t *buffer, int samples_this_frame)
+{
+	// Do nothing
+}
+
 
 //-------------------------------------------------
 //  execute_command - execute a command not yet
@@ -565,8 +635,18 @@ bool osd_common_t::execute_command(const char *command)
 
 }
 
+static void output_notifier_callback(const char *outname, int32_t value, void *param)
+{
+	static_cast<osd_common_t*>(param)->notify(outname, value);
+}
+
 void osd_common_t::init_subsystems()
 {
+	// monitors have to be initialized before video init
+	m_monitor_module = select_module_options<monitor_module *>(options(), OSD_MONITOR_PROVIDER);
+	assert(m_monitor_module != nullptr);
+	m_monitor_module->init(options());
+
 	if (!video_init())
 	{
 		video_exit();
@@ -575,8 +655,6 @@ void osd_common_t::init_subsystems()
 		fflush(stdout);
 		exit(-1);
 	}
-
-	output_init();
 
 	m_keyboard_input = select_module_options<input_module *>(options(), OSD_KEYBOARDINPUT_PROVIDER);
 	m_mouse_input = select_module_options<input_module *>(options(), OSD_MOUSEINPUT_PROVIDER);
@@ -594,12 +672,16 @@ void osd_common_t::init_subsystems()
 
 	m_midi = select_module_options<midi_module *>(options(), OSD_MIDI_PROVIDER);
 
+	m_output = select_module_options<output_module *>(options(), OSD_OUTPUT_PROVIDER);
+	m_output->set_machine(&machine());
+	machine().output().set_notifier(nullptr, output_notifier_callback, this);
+
 	m_mod_man.init(options());
 
 	input_init();
 	// we need pause callbacks
-	machine().add_notifier(MACHINE_NOTIFY_PAUSE, machine_notify_delegate(FUNC(osd_common_t::input_pause), this));
-	machine().add_notifier(MACHINE_NOTIFY_RESUME, machine_notify_delegate(FUNC(osd_common_t::input_resume), this));
+	machine().add_notifier(MACHINE_NOTIFY_PAUSE, machine_notify_delegate(&osd_common_t::input_pause, this));
+	machine().add_notifier(MACHINE_NOTIFY_RESUME, machine_notify_delegate(&osd_common_t::input_resume, this));
 }
 
 bool osd_common_t::video_init()
@@ -646,16 +728,9 @@ void osd_common_t::input_resume()
 	m_joystick_input->resume();
 }
 
-bool osd_common_t::output_init()
-{
-	return true;
-}
-
 void osd_common_t::exit_subsystems()
 {
 	video_exit();
-	input_exit();
-	output_exit();
 }
 
 void osd_common_t::video_exit()
@@ -663,18 +738,6 @@ void osd_common_t::video_exit()
 }
 
 void osd_common_t::window_exit()
-{
-}
-
-void osd_common_t::input_exit()
-{
-	m_keyboard_input->exit();
-	m_mouse_input->exit();
-	m_lightgun_input->exit();
-	m_joystick_input->exit();
-}
-
-void osd_common_t::output_exit()
 {
 }
 

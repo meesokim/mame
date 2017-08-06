@@ -23,10 +23,14 @@ Notes:
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/gng.h"
+
 #include "cpu/z80/z80.h"
 #include "cpu/m6809/m6809.h"
-#include "sound/2203intf.h"
-#include "includes/gng.h"
+#include "machine/74259.h"
+#include "machine/gen_latch.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 WRITE8_MEMBER(gng_state::gng_bankswitch_w)
@@ -37,9 +41,23 @@ WRITE8_MEMBER(gng_state::gng_bankswitch_w)
 		membank("bank1")->set_entry((data & 0x03));
 }
 
-WRITE8_MEMBER(gng_state::gng_coin_counter_w)
+WRITE_LINE_MEMBER(gng_state::coin_counter_1_w)
 {
-	machine().bookkeeping().coin_counter_w(offset, data);
+	machine().bookkeeping().coin_counter_w(0, state);
+}
+
+WRITE_LINE_MEMBER(gng_state::coin_counter_2_w)
+{
+	machine().bookkeeping().coin_counter_w(1, state);
+}
+
+WRITE_LINE_MEMBER(gng_state::ym_reset_w)
+{
+	if (!state)
+	{
+		m_ym[0]->reset();
+		m_ym[1]->reset();
+	}
 }
 
 static ADDRESS_MAP_START( gng_map, AS_PROGRAM, 8, gng_state )
@@ -54,13 +72,11 @@ static ADDRESS_MAP_START( gng_map, AS_PROGRAM, 8, gng_state )
 	AM_RANGE(0x3004, 0x3004) AM_READ_PORT("DSW2")
 	AM_RANGE(0x3800, 0x38ff) AM_DEVWRITE("palette", palette_device, write_ext) AM_SHARE("palette_ext")
 	AM_RANGE(0x3900, 0x39ff) AM_DEVWRITE("palette", palette_device, write) AM_SHARE("palette")
-	AM_RANGE(0x3a00, 0x3a00) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0x3a00, 0x3a00) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0x3b08, 0x3b09) AM_WRITE(gng_bgscrollx_w)
 	AM_RANGE(0x3b0a, 0x3b0b) AM_WRITE(gng_bgscrolly_w)
 	AM_RANGE(0x3c00, 0x3c00) AM_NOP /* watchdog? */
-	AM_RANGE(0x3d00, 0x3d00) AM_WRITE(gng_flipscreen_w)
-//  { 0x3d01, 0x3d01, reset sound cpu?
-	AM_RANGE(0x3d02, 0x3d03) AM_WRITE(gng_coin_counter_w)
+	AM_RANGE(0x3d00, 0x3d07) AM_DEVWRITE("mainlatch", ls259_device, write_d0)
 	AM_RANGE(0x3e00, 0x3e00) AM_WRITE(gng_bankswitch_w)
 	AM_RANGE(0x4000, 0x5fff) AM_ROMBANK("bank1")
 	AM_RANGE(0x6000, 0xffff) AM_ROM
@@ -71,7 +87,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, gng_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0xc000, 0xc7ff) AM_RAM
-	AM_RANGE(0xc800, 0xc800) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xc800, 0xc800) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xe000, 0xe001) AM_DEVWRITE("ym1", ym2203_device, write)
 	AM_RANGE(0xe002, 0xe003) AM_DEVWRITE("ym2", ym2203_device, write)
 ADDRESS_MAP_END
@@ -304,7 +320,7 @@ GFXDECODE_END
 
 void gng_state::machine_start()
 {
-	UINT8 *rombase = memregion("maincpu")->base();
+	uint8_t *rombase = memregion("maincpu")->base();
 	membank("bank1")->configure_entries(0, 4, &rombase[0x10000], 0x2000);
 	membank("bank1")->configure_entry(4, &rombase[0x4000]);
 
@@ -338,7 +354,7 @@ void gng_state::machine_reset()
 	}
 }
 
-static MACHINE_CONFIG_START( gng, gng_state )
+static MACHINE_CONFIG_START( gng )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6809, XTAL_12MHz/8)        /* verified on pcb */
@@ -349,6 +365,12 @@ static MACHINE_CONFIG_START( gng, gng_state )
 	MCFG_CPU_PROGRAM_MAP(sound_map)
 	MCFG_CPU_PERIODIC_INT_DRIVER(gng_state, irq0_line_hold, 4*60)
 
+	MCFG_DEVICE_ADD("mainlatch", LS259, 0) // 9B on A board
+	MCFG_ADDRESSABLE_LATCH_Q0_OUT_CB(WRITELINE(gng_state, flipscreen_w))
+	MCFG_ADDRESSABLE_LATCH_Q1_OUT_CB(INPUTLINE("audiocpu", INPUT_LINE_RESET)) MCFG_DEVCB_INVERT
+	MCFG_DEVCB_CHAIN_OUTPUT(WRITELINE(gng_state, ym_reset_w))
+	MCFG_ADDRESSABLE_LATCH_Q2_OUT_CB(WRITELINE(gng_state, coin_counter_1_w))
+	MCFG_ADDRESSABLE_LATCH_Q3_OUT_CB(WRITELINE(gng_state, coin_counter_2_w))
 
 	/* video hardware */
 	MCFG_BUFFERED_SPRITERAM8_ADD("spriteram")
@@ -359,7 +381,7 @@ static MACHINE_CONFIG_START( gng, gng_state )
 	MCFG_SCREEN_SIZE(32*8, 32*8)
 	MCFG_SCREEN_VISIBLE_AREA(0*8, 32*8-1, 2*8, 30*8-1)
 	MCFG_SCREEN_UPDATE_DRIVER(gng_state, screen_update_gng)
-	MCFG_SCREEN_VBLANK_DEVICE("spriteram", buffered_spriteram8_device, vblank_copy_rising)
+	MCFG_SCREEN_VBLANK_CALLBACK(DEVWRITELINE("spriteram", buffered_spriteram8_device, vblank_copy_rising))
 	MCFG_SCREEN_PALETTE("palette")
 
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", gng)
@@ -369,6 +391,8 @@ static MACHINE_CONFIG_START( gng, gng_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_SOUND_ADD("ym1", YM2203, XTAL_12MHz/8)     /* verified on pcb */
 	MCFG_SOUND_ROUTE(0, "mono", 0.40)
@@ -778,14 +802,14 @@ DRIVER_INIT_MEMBER(gng_state,diamond)
 
 
 
-GAME( 1985, gng,       0,   gng, gng, driver_device,      0,       ROT0, "Capcom", "Ghosts'n Goblins (World? set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, gnga,      gng, gng, gng, driver_device,      0,       ROT0, "Capcom", "Ghosts'n Goblins (World? set 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, gngbl,     gng, gng, gng, driver_device,      0,       ROT0, "bootleg", "Ghosts'n Goblins (bootleg with Cross)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, gngprot,   gng, gng, gng, driver_device,      0,       ROT0, "Capcom", "Ghosts'n Goblins (prototype)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, gngblita,  gng, gng, gng, driver_device,      0,       ROT0, "bootleg", "Ghosts'n Goblins (Italian bootleg, harder)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, gngc,      gng, gng, gng, driver_device,      0,       ROT0, "Capcom", "Ghosts'n Goblins (World? set 3)", MACHINE_SUPPORTS_SAVE ) // rev c?
-GAME( 1985, gngt,      gng, gng, gng, driver_device,      0,       ROT0, "Capcom (Taito America license)", "Ghosts'n Goblins (US)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, makaimur,  gng, gng, makaimur, driver_device, 0,       ROT0, "Capcom", "Makai-Mura (Japan)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, makaimurc, gng, gng, makaimur, driver_device, 0,       ROT0, "Capcom", "Makai-Mura (Japan Revision C)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, makaimurg, gng, gng, makaimur, driver_device, 0,       ROT0, "Capcom", "Makai-Mura (Japan Revision G)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, diamond,   0,   gng, diamond, gng_state,  diamond, ROT0, "KH Video", "Diamond Run", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, gng,       0,   gng, gng,      gng_state, 0,       ROT0, "Capcom",   "Ghosts'n Goblins (World? set 1)",            MACHINE_SUPPORTS_SAVE )
+GAME( 1985, gnga,      gng, gng, gng,      gng_state, 0,       ROT0, "Capcom",   "Ghosts'n Goblins (World? set 2)",            MACHINE_SUPPORTS_SAVE )
+GAME( 1985, gngbl,     gng, gng, gng,      gng_state, 0,       ROT0, "bootleg",  "Ghosts'n Goblins (bootleg with Cross)",      MACHINE_SUPPORTS_SAVE )
+GAME( 1985, gngprot,   gng, gng, gng,      gng_state, 0,       ROT0, "Capcom",   "Ghosts'n Goblins (prototype)",               MACHINE_SUPPORTS_SAVE )
+GAME( 1985, gngblita,  gng, gng, gng,      gng_state, 0,       ROT0, "bootleg",  "Ghosts'n Goblins (Italian bootleg, harder)", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, gngc,      gng, gng, gng,      gng_state, 0,       ROT0, "Capcom",   "Ghosts'n Goblins (World? set 3)",            MACHINE_SUPPORTS_SAVE ) // rev c?
+GAME( 1985, gngt,      gng, gng, gng,      gng_state, 0,       ROT0, "Capcom (Taito America license)", "Ghosts'n Goblins (US)", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, makaimur,  gng, gng, makaimur, gng_state, 0,       ROT0, "Capcom",   "Makai-Mura (Japan)",                         MACHINE_SUPPORTS_SAVE )
+GAME( 1985, makaimurc, gng, gng, makaimur, gng_state, 0,       ROT0, "Capcom",   "Makai-Mura (Japan Revision C)",              MACHINE_SUPPORTS_SAVE )
+GAME( 1985, makaimurg, gng, gng, makaimur, gng_state, 0,       ROT0, "Capcom",   "Makai-Mura (Japan Revision G)",              MACHINE_SUPPORTS_SAVE )
+GAME( 1989, diamond,   0,   gng, diamond,  gng_state, diamond, ROT0, "KH Video", "Diamond Run",                                MACHINE_SUPPORTS_SAVE )

@@ -19,7 +19,9 @@ for various things, but none of that is working.
 
 ****************************************************************************/
 
+#include "emu.h"
 #include "includes/mc80.h"
+#include "screen.h"
 
 static ADDRESS_MAP_START(mc8020_mem, AS_PROGRAM, 8, mc80_state)
 	ADDRESS_MAP_UNMAP_HIGH
@@ -52,7 +54,7 @@ static ADDRESS_MAP_START(mc8030_io, AS_IO, 8, mc80_state)
 	AM_RANGE(0x80, 0x83) AM_MIRROR(0xff00) AM_DEVREADWRITE("zve_ctc", z80ctc_device, read, write) // user CTC
 	AM_RANGE(0x84, 0x87) AM_MIRROR(0xff00) AM_DEVREADWRITE("zve_pio", z80pio_device, read, write) // PIO unknown usage
 	AM_RANGE(0x88, 0x8f) AM_MIRROR(0xff00) AM_WRITE(mc8030_zve_write_protect_w)
-	AM_RANGE(0xc0, 0xcf) AM_MIRROR(0xff00) AM_WRITE(mc8030_vis_w) AM_MASK(0xffff)
+	AM_RANGE(0xc0, 0xcf) AM_SELECT(0xff00) AM_WRITE(mc8030_vis_w)
 	AM_RANGE(0xd0, 0xd3) AM_MIRROR(0xff00) AM_DEVREADWRITE("asp_sio", z80sio0_device, cd_ba_r, cd_ba_w) // keyboard & IFSS?
 	AM_RANGE(0xd4, 0xd7) AM_MIRROR(0xff00) AM_DEVREADWRITE("asp_ctc", z80ctc_device, read, write) // sio bauds, KMBG? and kbd
 	AM_RANGE(0xd8, 0xdb) AM_MIRROR(0xff00) AM_DEVREADWRITE("asp_pio", z80pio_device, read, write) // external bus
@@ -140,7 +142,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(mc80_state::mc8020_kbd)
 {
 	address_space &mem = m_maincpu->space(AS_PROGRAM);
 	char kbdrow[6];
-	UINT8 i;
+	uint8_t i;
 	for (i = 1; i < 8; i++)
 	{
 		sprintf(kbdrow,"X%X", i);
@@ -159,7 +161,7 @@ static const z80_daisy_config mc8030_daisy_chain[] =
 	{ nullptr }
 };
 
-static MACHINE_CONFIG_START( mc8020, mc80_state )
+static MACHINE_CONFIG_START( mc8020 )
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",Z80, XTAL_2_4576MHz)
 	MCFG_CPU_PROGRAM_MAP(mc8020_mem)
@@ -196,12 +198,12 @@ static MACHINE_CONFIG_START( mc8020, mc80_state )
 	MCFG_TIMER_DRIVER_ADD_PERIODIC("mc8020_kbd", mc80_state, mc8020_kbd, attotime::from_hz(50))
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( mc8030, mc80_state )
+static MACHINE_CONFIG_START( mc8030 )
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",Z80, XTAL_2_4576MHz)
 	MCFG_CPU_PROGRAM_MAP(mc8030_mem)
 	MCFG_CPU_IO_MAP(mc8030_io)
-	MCFG_CPU_CONFIG(mc8030_daisy_chain)
+	MCFG_Z80_DAISY_CHAIN(mc8030_daisy_chain)
 	MCFG_CPU_IRQ_ACKNOWLEDGE_DRIVER(mc80_state,mc8030_irq_callback)
 
 	MCFG_MACHINE_RESET_OVERRIDE(mc80_state,mc8030)
@@ -299,6 +301,6 @@ ROM_END
 
 /* Driver */
 
-/*    YEAR  NAME    PARENT  COMPAT   MACHINE    INPUT    INIT    COMPANY               FULLNAME       FLAGS */
-COMP( 198?, mc8020, 0,      0,       mc8020,    mc8020, driver_device,  0,   "VEB Elektronik Gera", "MC-80.21/22", MACHINE_NO_SOUND)
-COMP( 198?, mc8030, mc8020, 0,       mc8030,    mc8030, driver_device,  0,   "VEB Elektronik Gera", "MC-80.30/31", MACHINE_NOT_WORKING | MACHINE_NO_SOUND | ORIENTATION_FLIP_X)
+//    YEAR  NAME    PARENT  COMPAT   MACHINE    INPUT   STATE       INIT  COMPANY                FULLNAME       FLAGS
+COMP( 198?, mc8020, 0,      0,       mc8020,    mc8020, mc80_state, 0,    "VEB Elektronik Gera", "MC-80.21/22", MACHINE_NO_SOUND )
+COMP( 198?, mc8030, mc8020, 0,       mc8030,    mc8030, mc80_state, 0,    "VEB Elektronik Gera", "MC-80.30/31", MACHINE_NOT_WORKING | MACHINE_NO_SOUND | ORIENTATION_FLIP_X )

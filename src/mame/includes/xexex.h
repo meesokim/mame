@@ -15,6 +15,8 @@
 #include "video/k054338.h"
 #include "video/k053251.h"
 #include "video/konami_helper.h"
+#include "machine/k054321.h"
+#include "screen.h"
 
 class xexex_state : public driver_device
 {
@@ -37,11 +39,12 @@ public:
 		m_k053252(*this, "k053252"),
 		m_k054338(*this, "k054338"),
 		m_palette(*this, "palette"),
-		m_screen(*this, "screen") { }
+		m_screen(*this, "screen"),
+		m_k054321(*this, "k054321") { }
 
 	/* memory pointers */
-	required_shared_ptr<UINT16> m_workram;
-	required_shared_ptr<UINT16> m_spriteram;
+	required_shared_ptr<uint16_t> m_workram;
+	required_shared_ptr<uint16_t> m_spriteram;
 
 	/* video-related */
 	int        m_layer_colorbase[4];
@@ -50,8 +53,8 @@ public:
 	int        m_cur_alpha;
 
 	/* misc */
-	UINT16     m_cur_control2;
-	INT32      m_strip_0x1a;
+	uint16_t     m_cur_control2;
+	int32_t      m_strip_0x1a;
 	int        m_suspension_active;
 	int        m_resume_trigger;
 	emu_timer  *m_dmadelay_timer;
@@ -73,21 +76,20 @@ public:
 	required_device<k054338_device> m_k054338;
 	required_device<palette_device> m_palette;
 	required_device<screen_device> m_screen;
+	required_device<k054321_device> m_k054321;
+
 	DECLARE_READ16_MEMBER(spriteram_mirror_r);
 	DECLARE_WRITE16_MEMBER(spriteram_mirror_w);
 	DECLARE_READ16_MEMBER(xexex_waitskip_r);
 	DECLARE_READ16_MEMBER(control2_r);
 	DECLARE_WRITE16_MEMBER(control2_w);
-	DECLARE_WRITE16_MEMBER(sound_cmd1_w);
-	DECLARE_WRITE16_MEMBER(sound_cmd2_w);
 	DECLARE_WRITE16_MEMBER(sound_irq_w);
-	DECLARE_READ16_MEMBER(sound_status_r);
 	DECLARE_WRITE8_MEMBER(sound_bankswitch_w);
 	DECLARE_DRIVER_INIT(xexex);
 	virtual void machine_start() override;
 	virtual void machine_reset() override;
 	virtual void video_start() override;
-	UINT32 screen_update_xexex(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_xexex(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	TIMER_CALLBACK_MEMBER(dmaend_callback);
 	TIMER_DEVICE_CALLBACK_MEMBER(xexex_interrupt);
 	void xexex_postload();

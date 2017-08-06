@@ -147,17 +147,19 @@ http://www.z88forever.org.uk/zxplus3e/
 *******************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
 #include "includes/spectrum.h"
-#include "imagedev/snapquik.h"
-#include "imagedev/cassette.h"
-#include "sound/speaker.h"
-#include "sound/ay8910.h"
-#include "formats/tzx_cas.h"
-#include "machine/spec_snqk.h"
+#include "includes/spec128.h"
+#include "includes/timex.h"
+
+#include "cpu/z80/z80.h"
 #include "machine/beta.h"
-#include "machine/ram.h"
+#include "sound/ay8910.h"
+
+#include "screen.h"
 #include "softlist.h"
+
+#include "formats/tzx_cas.h"
+
 
 /****************************************************************************************************/
 /* TS2048 specific functions */
@@ -212,15 +214,15 @@ WRITE8_MEMBER( spectrum_state::ts2068_port_ff_w )
  *******************************************************************/
 void spectrum_state::ts2068_update_memory()
 {
-	UINT8 *messram = nullptr;
+	uint8_t *messram = nullptr;
 	if (m_ram) messram = m_ram->pointer();
 	address_space &space = m_maincpu->space(AS_PROGRAM);
-	UINT8 *DOCK = nullptr;
+	uint8_t *DOCK = nullptr;
 	if (m_dock_crt) DOCK = m_dock_crt->base();
 
 
-	UINT8 *ExROM = memregion("maincpu")->base() + 0x014000;
-	UINT8 *ChosenROM;
+	uint8_t *ExROM = memregion("maincpu")->base() + 0x014000;
+	uint8_t *ChosenROM;
 
 	if (m_port_f4_data & 0x01)
 	{
@@ -530,7 +532,7 @@ static ADDRESS_MAP_START(ts2068_io, AS_IO, 8, spectrum_state )
 	AM_RANGE(0xf4, 0xf4) AM_READWRITE(ts2068_port_f4_r,ts2068_port_f4_w ) AM_MIRROR(0xff00)
 	AM_RANGE(0xf5, 0xf5) AM_DEVWRITE("ay8912", ay8910_device, address_w ) AM_MIRROR(0xff00)
 	AM_RANGE(0xf6, 0xf6) AM_DEVREADWRITE("ay8912", ay8910_device, data_r, data_w ) AM_MIRROR(0xff00)
-	AM_RANGE(0xfe, 0xfe) AM_READWRITE(spectrum_port_fe_r,spectrum_port_fe_w )  AM_MIRROR(0xff00)  AM_MASK(0xffff)
+	AM_RANGE(0xfe, 0xfe) AM_READWRITE(spectrum_port_fe_r,spectrum_port_fe_w )  AM_SELECT(0xff00)
 	AM_RANGE(0xff, 0xff) AM_READWRITE(ts2068_port_ff_r,ts2068_port_ff_w ) AM_MIRROR(0xff00)
 ADDRESS_MAP_END
 
@@ -571,7 +573,7 @@ WRITE8_MEMBER( spectrum_state::tc2048_port_ff_w )
 }
 
 static ADDRESS_MAP_START(tc2048_io, AS_IO, 8, spectrum_state )
-	AM_RANGE(0x00, 0x00) AM_READWRITE(spectrum_port_fe_r,spectrum_port_fe_w) AM_MIRROR(0xfffe) AM_MASK(0xffff)
+	AM_RANGE(0x00, 0x00) AM_READWRITE(spectrum_port_fe_r,spectrum_port_fe_w) AM_SELECT(0xfffe)
 	AM_RANGE(0x1f, 0x1f) AM_READ(spectrum_port_1f_r) AM_MIRROR(0xff00)
 	AM_RANGE(0x7f, 0x7f) AM_READ(spectrum_port_7f_r) AM_MIRROR(0xff00)
 	AM_RANGE(0xdf, 0xdf) AM_READ(spectrum_port_df_r) AM_MIRROR(0xff00)
@@ -585,7 +587,7 @@ ADDRESS_MAP_END
 
 MACHINE_RESET_MEMBER(spectrum_state,tc2048)
 {
-	UINT8 *messram = m_ram->pointer();
+	uint8_t *messram = m_ram->pointer();
 
 	membank("bank1")->set_base(messram);
 	membank("bank2")->set_base(messram);
@@ -597,24 +599,24 @@ MACHINE_RESET_MEMBER(spectrum_state,tc2048)
 
 DEVICE_IMAGE_LOAD_MEMBER( spectrum_state, timex_cart )
 {
-	UINT32 size = m_dock->common_get_size("rom");
+	uint32_t size = m_dock->common_get_size("rom");
 
-	if (image.software_entry() == nullptr)
+	if (!image.loaded_through_softlist())
 	{
-		UINT8 *DOCK;
+		uint8_t *DOCK;
 		int chunks_in_file = 0;
-		dynamic_buffer header;
+		std::vector<uint8_t> header;
 		header.resize(9);
 
 		if (size % 0x2000 != 9)
 		{
 			image.seterror(IMAGE_ERROR_UNSPECIFIED, "File corrupted");
-			return IMAGE_INIT_FAIL;
+			return image_init_result::FAIL;
 		}
-		if (image.software_entry() != nullptr)
+		if (!image.loaded_through_softlist())
 		{
 			image.seterror(IMAGE_ERROR_UNSPECIFIED, "Loading from softlist is not supported yet");
-			return IMAGE_INIT_FAIL;
+			return image_init_result::FAIL;
 		}
 
 		m_dock->rom_alloc(0x10000, GENERIC_ROM8_WIDTH, ENDIANNESS_LITTLE);
@@ -629,7 +631,7 @@ DEVICE_IMAGE_LOAD_MEMBER( spectrum_state, timex_cart )
 		if (chunks_in_file * 0x2000 + 0x09 != size)
 		{
 			image.seterror(IMAGE_ERROR_UNSPECIFIED, "File corrupted");
-			return IMAGE_INIT_FAIL;
+			return image_init_result::FAIL;
 		}
 
 		switch (header[0])
@@ -653,7 +655,7 @@ DEVICE_IMAGE_LOAD_MEMBER( spectrum_state, timex_cart )
 
 			default:
 				image.seterror(IMAGE_ERROR_UNSPECIFIED, "Cart type not supported");
-				return IMAGE_INIT_FAIL;
+				return image_init_result::FAIL;
 		}
 
 		logerror ("Cart loaded [Chunks %02x]\n", m_ram_chunks);
@@ -664,7 +666,7 @@ DEVICE_IMAGE_LOAD_MEMBER( spectrum_state, timex_cart )
 		memcpy(m_dock->get_rom_base(), image.get_software_region("rom"), size);
 	}
 
-	return IMAGE_INIT_PASS;
+	return image_init_result::PASS;
 }
 
 
@@ -701,7 +703,7 @@ static MACHINE_CONFIG_DERIVED( ts2068, spectrum_128 )
 	MCFG_SCREEN_SIZE(TS2068_SCREEN_WIDTH, TS2068_SCREEN_HEIGHT)
 	MCFG_SCREEN_VISIBLE_AREA(0, TS2068_SCREEN_WIDTH-1, 0, TS2068_SCREEN_HEIGHT-1)
 	MCFG_SCREEN_UPDATE_DRIVER(spectrum_state, screen_update_ts2068)
-	MCFG_SCREEN_VBLANK_DRIVER(spectrum_state, screen_eof_timex)
+	MCFG_SCREEN_VBLANK_CALLBACK(WRITELINE(spectrum_state, screen_vblank_timex))
 
 	MCFG_GFXDECODE_MODIFY("gfxdecode", ts2068)
 
@@ -746,7 +748,7 @@ static MACHINE_CONFIG_DERIVED( tc2048, spectrum )
 	MCFG_SCREEN_SIZE(TS2068_SCREEN_WIDTH, SPEC_SCREEN_HEIGHT)
 	MCFG_SCREEN_VISIBLE_AREA(0, TS2068_SCREEN_WIDTH-1, 0, SPEC_SCREEN_HEIGHT-1)
 	MCFG_SCREEN_UPDATE_DRIVER(spectrum_state, screen_update_tc2048)
-	MCFG_SCREEN_VBLANK_DRIVER(spectrum_state, screen_eof_timex)
+	MCFG_SCREEN_VBLANK_CALLBACK(WRITELINE(spectrum_state, screen_vblank_timex))
 
 	MCFG_VIDEO_START_OVERRIDE(spectrum_state, spectrum_128 )
 
@@ -780,7 +782,7 @@ ROM_START(uk2086)
 	ROM_LOAD("ts2068_x.rom",0x14000,0x2000, CRC(ae16233a) SHA1(7e265a2c1f621ed365ea23bdcafdedbc79c1299c))
 ROM_END
 
-/*    YEAR  NAME      PARENT    COMPAT  MACHINE     INPUT       INIT    COMPANY     FULLNAME */
-COMP( 1984, tc2048,   spectrum, 0,      tc2048,     spectrum, driver_device,    0,      "Timex of Portugal",    "TC-2048" , 0)
-COMP( 1983, ts2068,   spectrum, 0,      ts2068,     spectrum, driver_device,    0,      "Timex Sinclair",       "TS-2068" , 0)
-COMP( 1986, uk2086,   spectrum, 0,      uk2086,     spectrum, driver_device,    0,      "Unipolbrit",           "UK-2086 ver. 1.2" , 0)
+//    YEAR  NAME      PARENT    COMPAT  MACHINE  INPUT     STATE           INIT  COMPANY               FULLNAME             FLAGS
+COMP( 1984, tc2048,   spectrum, 0,      tc2048,  spectrum, spectrum_state, 0,    "Timex of Portugal",  "TC-2048" ,          0 )
+COMP( 1983, ts2068,   spectrum, 0,      ts2068,  spectrum, spectrum_state, 0,    "Timex Sinclair",     "TS-2068" ,          0 )
+COMP( 1986, uk2086,   spectrum, 0,      uk2086,  spectrum, spectrum_state, 0,    "Unipolbrit",         "UK-2086 ver. 1.2" , 0 )

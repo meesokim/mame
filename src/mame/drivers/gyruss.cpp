@@ -58,14 +58,19 @@ and 1 SFX channel controlled by an 8039:
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
+#include "includes/gyruss.h"
+#include "includes/konamipt.h"
+
 #include "cpu/m6809/m6809.h"
-#include "machine/konami1.h"
 #include "cpu/mcs48/mcs48.h"
+#include "cpu/z80/z80.h"
+#include "machine/74259.h"
+#include "machine/gen_latch.h"
+#include "machine/konami1.h"
 #include "sound/ay8910.h"
 #include "sound/discrete.h"
-#include "includes/konamipt.h"
-#include "includes/gyruss.h"
+
+#include "speaker.h"
 
 
 #define MASTER_CLOCK    XTAL_18_432MHz
@@ -157,9 +162,9 @@ WRITE8_MEMBER(gyruss_state::gyruss_i8039_irq_w)
 	m_audiocpu_2->set_input_line(0, ASSERT_LINE);
 }
 
-WRITE8_MEMBER(gyruss_state::master_nmi_mask_w)
+WRITE_LINE_MEMBER(gyruss_state::master_nmi_mask_w)
 {
-	m_master_nmi_mask = data & 1;
+	m_master_nmi_mask = state;
 	if (!m_master_nmi_mask)
 		m_maincpu->set_input_line(INPUT_LINE_NMI, CLEAR_LINE);
 }
@@ -169,6 +174,16 @@ WRITE8_MEMBER(gyruss_state::slave_irq_mask_w)
 	m_slave_irq_mask = data & 1;
 	if (!m_slave_irq_mask)
 		m_subcpu->set_input_line(0, CLEAR_LINE);
+}
+
+WRITE_LINE_MEMBER(gyruss_state::coin_counter_1_w)
+{
+	machine().bookkeeping().coin_counter_w(0, state);
+}
+
+WRITE_LINE_MEMBER(gyruss_state::coin_counter_2_w)
+{
+	machine().bookkeeping().coin_counter_w(1, state);
 }
 
 static ADDRESS_MAP_START( main_cpu1_map, AS_PROGRAM, 8, gyruss_state )
@@ -182,9 +197,8 @@ static ADDRESS_MAP_START( main_cpu1_map, AS_PROGRAM, 8, gyruss_state )
 	AM_RANGE(0xc0a0, 0xc0a0) AM_READ_PORT("P1")
 	AM_RANGE(0xc0c0, 0xc0c0) AM_READ_PORT("P2")
 	AM_RANGE(0xc0e0, 0xc0e0) AM_READ_PORT("DSW1")
-	AM_RANGE(0xc100, 0xc100) AM_READ_PORT("DSW3") AM_WRITE(soundlatch_byte_w)
-	AM_RANGE(0xc180, 0xc180) AM_WRITE(master_nmi_mask_w)
-	AM_RANGE(0xc185, 0xc185) AM_WRITEONLY AM_SHARE("flipscreen")
+	AM_RANGE(0xc100, 0xc100) AM_READ_PORT("DSW3") AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
+	AM_RANGE(0xc180, 0xc187) AM_DEVWRITE("mainlatch", ls259_device, write_d0)
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( main_cpu2_map, AS_PROGRAM, 8, gyruss_state )
@@ -200,7 +214,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( audio_cpu1_map, AS_PROGRAM, 8, gyruss_state )
 	AM_RANGE(0x0000, 0x5fff) AM_ROM
 	AM_RANGE(0x6000, 0x63ff) AM_RAM
-	AM_RANGE(0x8000, 0x8000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x8000, 0x8000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( audio_cpu1_io_map, AS_IO, 8, gyruss_state )
@@ -221,7 +235,7 @@ static ADDRESS_MAP_START( audio_cpu1_io_map, AS_IO, 8, gyruss_state )
 	AM_RANGE(0x11, 0x11) AM_DEVREAD("ay5", ay8910_device, data_r)
 	AM_RANGE(0x12, 0x12) AM_DEVWRITE("ay5", ay8910_device, data_w)
 	AM_RANGE(0x14, 0x14) AM_WRITE(gyruss_i8039_irq_w)
-	AM_RANGE(0x18, 0x18) AM_WRITE(soundlatch2_byte_w)
+	AM_RANGE(0x18, 0x18) AM_DEVWRITE("soundlatch2", generic_latch_8_device, write)
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( audio_cpu2_map, AS_PROGRAM, 8, gyruss_state )
@@ -229,9 +243,7 @@ static ADDRESS_MAP_START( audio_cpu2_map, AS_PROGRAM, 8, gyruss_state )
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( audio_cpu2_io_map, AS_IO, 8, gyruss_state )
-	AM_RANGE(0x00, 0xff) AM_READ(soundlatch2_byte_r)
-	AM_RANGE(MCS48_PORT_P1, MCS48_PORT_P1) AM_WRITE(gyruss_dac_w)
-	AM_RANGE(MCS48_PORT_P2, MCS48_PORT_P2) AM_WRITE(gyruss_irq_clear_w)
+	AM_RANGE(0x00, 0xff) AM_DEVREAD("soundlatch2", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 
@@ -459,7 +471,7 @@ INTERRUPT_GEN_MEMBER(gyruss_state::slave_vblank_irq)
 		device.execute().set_input_line(0, ASSERT_LINE);
 }
 
-static MACHINE_CONFIG_START( gyruss, gyruss_state )
+static MACHINE_CONFIG_START( gyruss )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, MASTER_CLOCK/6)    /* 3.072 MHz */
@@ -477,8 +489,16 @@ static MACHINE_CONFIG_START( gyruss, gyruss_state )
 	MCFG_CPU_ADD("audio2", I8039, XTAL_8MHz)
 	MCFG_CPU_PROGRAM_MAP(audio_cpu2_map)
 	MCFG_CPU_IO_MAP(audio_cpu2_io_map)
+	MCFG_MCS48_PORT_P1_OUT_CB(WRITE8(gyruss_state, gyruss_dac_w))
+	MCFG_MCS48_PORT_P2_OUT_CB(WRITE8(gyruss_state, gyruss_irq_clear_w))
 
 	MCFG_QUANTUM_TIME(attotime::from_hz(6000))
+
+	MCFG_DEVICE_ADD("mainlatch", LS259, 0) // 3C
+	MCFG_ADDRESSABLE_LATCH_Q0_OUT_CB(WRITELINE(gyruss_state, master_nmi_mask_w))
+	MCFG_ADDRESSABLE_LATCH_Q2_OUT_CB(WRITELINE(gyruss_state, coin_counter_1_w))
+	MCFG_ADDRESSABLE_LATCH_Q3_OUT_CB(WRITELINE(gyruss_state, coin_counter_2_w))
+	MCFG_ADDRESSABLE_LATCH_Q5_OUT_CB(WRITELINE(gyruss_state, flipscreen_w))
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -493,6 +513,9 @@ static MACHINE_CONFIG_START( gyruss, gyruss_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch2")
 
 	MCFG_SOUND_ADD("ay1", AY8910, SOUND_CLOCK/8)
 	MCFG_AY8910_OUTPUT_TYPE(AY8910_DISCRETE_OUTPUT)
@@ -684,7 +707,7 @@ DRIVER_INIT_MEMBER(gyruss_state,gyruss)
 }
 
 
-GAME( 1983, gyruss,   0,        gyruss,   gyruss, gyruss_state,   gyruss, ROT90, "Konami", "Gyruss", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, gyruss,   0,        gyruss,   gyruss,   gyruss_state, gyruss, ROT90, "Konami", "Gyruss", MACHINE_SUPPORTS_SAVE )
 GAME( 1983, gyrussce, gyruss,   gyruss,   gyrussce, gyruss_state, gyruss, ROT90, "Konami (Centuri license)", "Gyruss (Centuri)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, gyrussb,  gyruss,   gyruss,   gyruss, gyruss_state,   gyruss, ROT90, "bootleg?", "Gyruss (bootleg?)", MACHINE_SUPPORTS_SAVE ) /* Supposed Taito NZ license, but (c) Konami */
-GAME( 1983, venus,    gyruss,   gyruss,   gyruss, gyruss_state,   gyruss, ROT90, "bootleg", "Venus (bootleg of Gyruss)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, gyrussb,  gyruss,   gyruss,   gyruss,   gyruss_state, gyruss, ROT90, "bootleg?", "Gyruss (bootleg?)", MACHINE_SUPPORTS_SAVE ) /* Supposed Taito NZ license, but (c) Konami */
+GAME( 1983, venus,    gyruss,   gyruss,   gyruss,   gyruss_state, gyruss, ROT90, "bootleg", "Venus (bootleg of Gyruss)", MACHINE_SUPPORTS_SAVE )

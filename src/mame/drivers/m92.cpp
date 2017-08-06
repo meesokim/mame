@@ -201,45 +201,15 @@ psoldier dip locations still need verification.
 *****************************************************************************/
 
 #include "emu.h"
-#include "cpu/nec/nec.h"
-#include "cpu/nec/v25.h"
 #include "includes/m92.h"
 #include "includes/iremipt.h"
+
+#include "cpu/nec/nec.h"
+#include "cpu/nec/v25.h"
 #include "machine/irem_cpu.h"
-#include "sound/2151intf.h"
+#include "sound/ym2151.h"
 #include "sound/iremga20.h"
-#include "sound/okim6295.h"
-
-
-// I haven't managed to find a way to keep nbbatman happy when using the proper upd71059c device
-// so we just use an ugly hack and get the vector base from it for now until this is properly resolved.
-#define USE_HACKED_IRQS
-
-#ifdef USE_HACKED_IRQS
-
-#define M92_TRIGGER_IRQ0 m_maincpu->set_input_line_and_vector(0, HOLD_LINE, m_upd71059c->HACK_get_base_vector()+0 ); /* VBL interrupt */
-#define M92_TRIGGER_IRQ1 m_maincpu->set_input_line_and_vector(0, HOLD_LINE, m_upd71059c->HACK_get_base_vector()+1 ); /* Sprite buffer complete interrupt */
-#define M92_TRIGGER_IRQ2 m_maincpu->set_input_line_and_vector(0, HOLD_LINE, m_upd71059c->HACK_get_base_vector()+2 ); /* Raster interrupt */
-#define M92_TRIGGER_IRQ3 m_maincpu->set_input_line_and_vector(0, HOLD_LINE, m_upd71059c->HACK_get_base_vector()+3 ); /* Sound cpu->Main cpu interrupt */
-// not used due to HOLD LINE logic
-#define M92_CLEAR_IRQ0 ;
-#define M92_CLEAR_IRQ1 ;
-#define M92_CLEAR_IRQ2 ;
-#define M92_CLEAR_IRQ3 ;
-
-#else
-
-#define M92_TRIGGER_IRQ0 m_upd71059c->ir0_w(1);
-#define M92_TRIGGER_IRQ1 m_upd71059c->ir1_w(1);
-#define M92_TRIGGER_IRQ2 m_upd71059c->ir2_w(1);
-#define M92_TRIGGER_IRQ3 m_upd71059c->ir3_w(1);
-// not sure when these should happen, probably the source of our issues
-#define M92_CLEAR_IRQ0 m_upd71059c->ir0_w(0);
-#define M92_CLEAR_IRQ1 m_upd71059c->ir1_w(0);
-#define M92_CLEAR_IRQ2 m_upd71059c->ir2_w(0);
-#define M92_CLEAR_IRQ3 m_upd71059c->ir3_w(0);
-
-#endif
+#include "speaker.h"
 
 
 /*****************************************************************************/
@@ -265,21 +235,19 @@ TIMER_DEVICE_CALLBACK_MEMBER(m92_state::m92_scanline_interrupt)
 	if (scanline == m_raster_irq_position)
 	{
 		m_screen->update_partial(scanline);
-		M92_TRIGGER_IRQ2
+		m_upd71059c->ir2_w(1);
 	}
 	else
 	{
-		M92_CLEAR_IRQ2
-
 		/* VBLANK interrupt */
 		if (scanline == m_screen->visible_area().max_y + 1)
 		{
 			m_screen->update_partial(scanline);
-			M92_TRIGGER_IRQ0
+			m_upd71059c->ir0_w(1);
 		}
 		else
 		{
-			M92_CLEAR_IRQ0
+			m_upd71059c->ir0_w(0);
 		}
 
 	}
@@ -291,14 +259,14 @@ TIMER_DEVICE_CALLBACK_MEMBER(m92_state::m92_scanline_interrupt)
 
 READ16_MEMBER(m92_state::m92_eeprom_r)
 {
-	UINT8 *RAM = memregion("eeprom")->base();
+	uint8_t *RAM = memregion("eeprom")->base();
 //  logerror("%05x: EEPROM RE %04x\n",space.device().safe_pc(),offset);
 	return RAM[offset] | 0xff00;
 }
 
 WRITE16_MEMBER(m92_state::m92_eeprom_w)
 {
-	UINT8 *RAM = memregion("eeprom")->base();
+	uint8_t *RAM = memregion("eeprom")->base();
 //  logerror("%05x: EEPROM WR %04x\n",space.device().safe_pc(),offset);
 	if (ACCESSING_BITS_0_7)
 		RAM[offset] = data;
@@ -338,12 +306,13 @@ WRITE16_MEMBER(m92_state::m92_soundlatch_w)
 	if (m_soundcpu)
 		m_soundcpu->set_input_line(NEC_INPUT_LINE_INTP1, ASSERT_LINE);
 
-	soundlatch_byte_w(space, 0, data & 0xff);
+	m_soundlatch->write(space, 0, data & 0xff);
 }
 
 READ16_MEMBER(m92_state::m92_sound_status_r)
 {
 //logerror("%06x: read sound status\n",space.device().safe_pc());
+	m_upd71059c->ir3_w(0);
 	return m_sound_status;
 }
 
@@ -352,7 +321,7 @@ READ16_MEMBER(m92_state::m92_soundlatch_r)
 	if (m_soundcpu)
 		m_soundcpu->set_input_line(NEC_INPUT_LINE_INTP1, CLEAR_LINE);
 
-	return soundlatch_byte_r(space, offset) | 0xff00;
+	return m_soundlatch->read(space, offset) | 0xff00;
 }
 
 WRITE16_MEMBER(m92_state::m92_sound_irq_ack_w)
@@ -364,7 +333,7 @@ WRITE16_MEMBER(m92_state::m92_sound_irq_ack_w)
 WRITE16_MEMBER(m92_state::m92_sound_status_w)
 {
 	COMBINE_DATA(&m_sound_status);
-	M92_TRIGGER_IRQ3
+	m_upd71059c->ir3_w(1);
 
 }
 
@@ -419,7 +388,7 @@ ADDRESS_MAP_END
 
 WRITE16_MEMBER(m92_state::oki_bank_w)
 {
-	m_oki->set_bank_base(0x40000 * ((data+1) & 0x3)); // +1?
+	m_oki->set_rom_bank((data+1) & 0x3); // +1?
 }
 
 static ADDRESS_MAP_START( ppan_portmap, AS_IO, 16, m92_state )
@@ -465,7 +434,7 @@ static INPUT_PORTS_START( m92_2player )
 	PORT_BIT( 0x0010, IP_ACTIVE_LOW, IPT_SERVICE1 )
 	PORT_BIT( 0x0020, IP_ACTIVE_LOW, IPT_SERVICE )
 	PORT_BIT( 0x0040, IP_ACTIVE_LOW, IPT_UNUSED )
-	PORT_BIT( 0x0080, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, m92_state,m92_sprite_busy_r, NULL)
+	PORT_BIT( 0x0080, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, m92_state,m92_sprite_busy_r, nullptr)
 	/* DIP switch bank 3 */
 	PORT_DIPUNKNOWN_DIPLOC( 0x0100, 0x0100, "SW3:1" )
 	PORT_DIPUNKNOWN_DIPLOC( 0x0200, 0x0200, "SW3:2" )
@@ -958,13 +927,7 @@ GFXDECODE_END
 
 /***************************************************************************/
 
-void m92_state::m92_sprite_interrupt()
-{
-	M92_TRIGGER_IRQ1
-}
-
-
-static MACHINE_CONFIG_START( m92, m92_state )
+static MACHINE_CONFIG_START( m92 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",V33,XTAL_18MHz/2)
@@ -977,7 +940,7 @@ static MACHINE_CONFIG_START( m92, m92_state )
 	MCFG_CPU_ADD("soundcpu" ,V35, XTAL_14_31818MHz)
 	MCFG_CPU_PROGRAM_MAP(sound_map)
 
-	MCFG_PIC8259_ADD( "upd71059c", INPUTLINE("maincpu", 0), VCC, NULL)
+	MCFG_PIC8259_ADD( "upd71059c", INPUTLINE("maincpu", 0), VCC, NOOP)
 
 	MCFG_MACHINE_START_OVERRIDE(m92_state,m92)
 	MCFG_MACHINE_RESET_OVERRIDE(m92_state,m92)
@@ -1003,6 +966,8 @@ static MACHINE_CONFIG_START( m92, m92_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_YM2151_ADD("ymsnd", XTAL_14_31818MHz/4)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("soundcpu", NEC_INPUT_LINE_INTP0))
@@ -1056,6 +1021,7 @@ static MACHINE_CONFIG_DERIVED( ppan, m92 )
 	MCFG_CPU_IO_MAP(ppan_portmap)
 
 	MCFG_DEVICE_REMOVE("soundcpu")
+	MCFG_DEVICE_REMOVE("soundlatch")
 	MCFG_DEVICE_REMOVE("ymsnd")
 	MCFG_DEVICE_REMOVE("irem")
 
@@ -1064,7 +1030,7 @@ static MACHINE_CONFIG_DERIVED( ppan, m92 )
 
 	MCFG_VIDEO_START_OVERRIDE(m92_state,ppan)
 
-	MCFG_OKIM6295_ADD("oki", 1000000, OKIM6295_PIN7_HIGH) // clock frequency & pin 7 not verified
+	MCFG_OKIM6295_ADD("oki", 1000000, PIN7_HIGH) // clock frequency & pin 7 not verified
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -1311,7 +1277,7 @@ ROM_START( majtitl2a )
 
 	ROM_REGION( 0x80000, "irem", 0 )
 	ROM_LOAD( "k0d.ic8", 0x000000, 0x80000, CRC(713b9e9f) SHA1(91384d67d4ba9c7d926fbecb077293c661b8ec83) )
-	
+
 	ROM_REGION( 0x4000, "eeprom", 0 )   /* D28C64C-20 EEPROM */
 	ROM_LOAD( "mt2eep",  0x000000, 0x800, CRC(208af971) SHA1(69384cac24b7af35a031f9b60e035131a8b10cb2) )
 
@@ -2238,51 +2204,42 @@ ROM_END
 
 DRIVER_INIT_MEMBER(m92_state,m92)
 {
-	UINT8 *ROM = memregion("maincpu")->base();
+	uint8_t *ROM = memregion("maincpu")->base();
 
 	membank("bank1")->set_base(&ROM[0xa0000]);
-
-	m_game_kludge = 0;
 }
 
 /* different address map (no bank1) */
 DRIVER_INIT_MEMBER(m92_state,lethalth)
 {
-	m_game_kludge = 0;
 }
 
 /* has bankswitching */
 DRIVER_INIT_MEMBER(m92_state,m92_bank)
 {
-	UINT8 *ROM = memregion("maincpu")->base();
+	uint8_t *ROM = memregion("maincpu")->base();
 
 	membank("bank1")->configure_entries(0, 4, &ROM[0x80000], 0x20000);
 	m_maincpu->space(AS_IO).install_write_handler(0x20, 0x21, write16_delegate(FUNC(m92_state::m92_bankswitch_w),this));
-
-	m_game_kludge = 0;
 }
 
 /* has bankswitching, has eeprom, needs sprite kludge */
 DRIVER_INIT_MEMBER(m92_state,majtitl2)
 {
-	UINT8 *ROM = memregion("maincpu")->base();
+	uint8_t *ROM = memregion("maincpu")->base();
 
 	membank("bank1")->configure_entries(0, 4, &ROM[0x80000], 0x20000);
 	m_maincpu->space(AS_IO).install_write_handler(0x20, 0x21, write16_delegate(FUNC(m92_state::m92_bankswitch_w),this));
 
 	/* This game has an eeprom on the game board */
 	m_maincpu->space(AS_PROGRAM).install_readwrite_handler(0xf0000, 0xf3fff, read16_delegate(FUNC(m92_state::m92_eeprom_r),this), write16_delegate(FUNC(m92_state::m92_eeprom_w),this));
-
-	m_game_kludge = 2;
 }
 
 /* TODO: figure out actual address map and other differences from real Irem h/w */
 DRIVER_INIT_MEMBER(m92_state,ppan)
 {
-	UINT8 *ROM = memregion("maincpu")->base();
+	uint8_t *ROM = memregion("maincpu")->base();
 	membank("bank1")->set_base(&ROM[0xa0000]);
-
-	m_game_kludge = 0;
 }
 
 /***************************************************************************/

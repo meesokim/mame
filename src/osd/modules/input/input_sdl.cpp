@@ -17,17 +17,18 @@
 #if defined(SDLMAME_SDL2)
 
 // standard sdl header
-#include "sdlinc.h"
+#include <SDL2/SDL.h>
 #include <ctype.h>
+// ReSharper disable once CppUnusedIncludeDirective
 #include <stddef.h>
 #include <mutex>
 #include <memory>
 #include <queue>
+#include <iterator>
+#include <algorithm>
 
 // MAME headers
 #include "emu.h"
-#include "osdepend.h"
-#include "ui/ui.h"
 #include "uiinput.h"
 #include "strconv.h"
 
@@ -109,13 +110,13 @@ static int lookup_sdl_code(const char *scode)
 class sdl_device : public event_based_device<SDL_Event>
 {
 public:
-	sdl_device(running_machine &machine, const char* name, input_device_class devclass, input_module &module)
-		: event_based_device(machine, name, devclass, module)
+	sdl_device(running_machine &machine, const char *name, const char *id, input_device_class devclass, input_module &module)
+		: event_based_device(machine, name, id, devclass, module)
 	{
 	}
 
 protected:
-	sdl_window_info * focus_window()
+	std::shared_ptr<sdl_window_info> focus_window()
 	{
 		return sdl_event_manager::instance().focus_window();
 	}
@@ -131,8 +132,8 @@ class sdl_keyboard_device : public sdl_device
 public:
 	keyboard_state keyboard;
 
-	sdl_keyboard_device(running_machine &machine, const char* name, input_module &module)
-		: sdl_device(machine, name, DEVICE_CLASS_KEYBOARD, module),
+	sdl_keyboard_device(running_machine &machine, const char *name, const char *id, input_module &module)
+		: sdl_device(machine, name, id, DEVICE_CLASS_KEYBOARD, module),
 		keyboard({{0}})
 	{
 	}
@@ -144,7 +145,7 @@ public:
 		case SDL_KEYDOWN:
 			keyboard.state[OSD_SDL_INDEX_KEYSYM(&sdlevent.key.keysym)] = 0x80;
 			if (sdlevent.key.keysym.sym < 0x20)
-				machine().ui_input().push_char_event(sdl_window_list->target(), sdlevent.key.keysym.sym);
+				machine().ui_input().push_char_event(osd_common_t::s_window_list.front()->target(), sdlevent.key.keysym.sym);
 			break;
 
 		case SDL_KEYUP:
@@ -154,13 +155,25 @@ public:
 		case SDL_TEXTINPUT:
 			if (*sdlevent.text.text)
 			{
-				sdl_window_info *window = GET_FOCUS_WINDOW(&event.text);
-				//printf("Focus window is %p - wl %p\n", window, sdl_window_list);
-				unicode_char result;
-				if (window != NULL)
+				auto window = GET_FOCUS_WINDOW(&event.text);
+				//printf("Focus window is %p - wl %p\n", window, osd_common_t::s_window_list);
+				if (window != nullptr)
 				{
-					osd_uchar_from_osdchar(&result, sdlevent.text.text, 1);
-					machine().ui_input().push_char_event(window->target(), result);
+					auto ptr = sdlevent.text.text;
+					auto len = std::strlen(sdlevent.text.text);
+					while (len)
+					{
+						char32_t ch;
+						auto chlen = uchar_from_utf8(&ch, ptr, len);
+						if (0 > chlen)
+						{
+							ch = 0x0fffd;
+							chlen = 1;
+						}
+						ptr += chlen;
+						len -= chlen;
+						machine().ui_input().push_char_event(window->target(), ch);
+					}
 				}
 			}
 			break;
@@ -179,11 +192,19 @@ public:
 
 class sdl_mouse_device : public sdl_device
 {
+private:
+	const std::chrono::milliseconds double_click_speed = std::chrono::milliseconds(250);
+	std::chrono::system_clock::time_point last_click;
+	int last_x;
+	int last_y;
+
 public:
 	mouse_state mouse;
 
-	sdl_mouse_device(running_machine &machine, const char* name, input_module &module)
-		: sdl_device(machine, name, DEVICE_CLASS_MOUSE, module),
+	sdl_mouse_device(running_machine &machine, const char *name, const char *id, input_module &module)
+		: sdl_device(machine, name, id, DEVICE_CLASS_MOUSE, module),
+		last_x(0),
+		last_y(0),
 		mouse({0})
 	{
 	}
@@ -210,9 +231,9 @@ public:
 
 			{
 				int cx = -1, cy = -1;
-				sdl_window_info *window = GET_FOCUS_WINDOW(&sdlevent.motion);
+				auto window = GET_FOCUS_WINDOW(&sdlevent.motion);
 
-				if (window != NULL && window->xy_to_render_target(sdlevent.motion.x, sdlevent.motion.y, &cx, &cy))
+				if (window != nullptr && window->xy_to_render_target(sdlevent.motion.x, sdlevent.motion.y, &cx, &cy))
 					machine().ui_input().push_mouse_move_event(window->target(), cx, cy);
 			}
 			break;
@@ -222,22 +243,18 @@ public:
 			//printf("But down %d %d %d %d %s\n", event.button.which, event.button.button, event.button.x, event.button.y, devinfo->name.c_str());
 			if (sdlevent.button.button == 1)
 			{
-				// FIXME Move static declaration
-				static osd_ticks_t last_click = 0;
-				static int last_x = 0;
-				static int last_y = 0;
 				int cx, cy;
-				osd_ticks_t click = osd_ticks() * 1000 / osd_ticks_per_second();
-				sdl_window_info *window = GET_FOCUS_WINDOW(&sdlevent.button);
-				if (window != NULL && window->xy_to_render_target(sdlevent.button.x, sdlevent.button.y, &cx, &cy))
+				auto click = std::chrono::system_clock::now();
+				auto window = GET_FOCUS_WINDOW(&sdlevent.button);
+				if (window != nullptr && window->xy_to_render_target(sdlevent.button.x, sdlevent.button.y, &cx, &cy))
 				{
 					machine().ui_input().push_mouse_down_event(window->target(), cx, cy);
-					// FIXME Parameter ?
-					if ((click - last_click < 250)
+
+					if (click - last_click < double_click_speed
 						&& (cx >= last_x - 4 && cx <= last_x + 4)
 						&& (cy >= last_y - 4 && cy <= last_y + 4))
 					{
-						last_click = 0;
+						last_click = std::chrono::time_point<std::chrono::system_clock>::min();
 						machine().ui_input().push_mouse_double_click_event(window->target(), cx, cy);
 					}
 					else
@@ -246,6 +263,17 @@ public:
 						last_x = cx;
 						last_y = cy;
 					}
+				}
+			}
+
+			else if (sdlevent.button.button == 3)
+			{
+				int cx, cy;
+				auto window = GET_FOCUS_WINDOW(&sdlevent.button);
+
+				if (window != nullptr && window->xy_to_render_target(sdlevent.button.x, sdlevent.button.y, &cx, &cy))
+				{
+					machine().ui_input().push_mouse_rdown_event(window->target(), cx, cy);
 				}
 			}
 			break;
@@ -257,18 +285,28 @@ public:
 			if (sdlevent.button.button == 1)
 			{
 				int cx, cy;
-				sdl_window_info *window = GET_FOCUS_WINDOW(&sdlevent.button);
+				auto window = GET_FOCUS_WINDOW(&sdlevent.button);
 
-				if (window != NULL && window->xy_to_render_target(sdlevent.button.x, sdlevent.button.y, &cx, &cy))
+				if (window != nullptr && window->xy_to_render_target(sdlevent.button.x, sdlevent.button.y, &cx, &cy))
 				{
 					machine().ui_input().push_mouse_up_event(window->target(), cx, cy);
+				}
+			}
+			else if (sdlevent.button.button == 3)
+			{
+				int cx, cy;
+				auto window = GET_FOCUS_WINDOW(&sdlevent.button);
+
+				if (window != nullptr && window->xy_to_render_target(sdlevent.button.x, sdlevent.button.y, &cx, &cy))
+				{
+					machine().ui_input().push_mouse_rup_event(window->target(), cx, cy);
 				}
 			}
 			break;
 
 		case SDL_MOUSEWHEEL:
-			sdl_window_info *window = GET_FOCUS_WINDOW(&sdlevent.wheel);
-			if (window != NULL)
+			auto window = GET_FOCUS_WINDOW(&sdlevent.wheel);
+			if (window != nullptr)
 				machine().ui_input().push_mouse_wheel_event(window->target(), 0, 0, sdlevent.wheel.y, 3);
 			break;
 		}
@@ -282,10 +320,10 @@ public:
 // state information for a joystick
 struct sdl_joystick_state
 {
-	INT32 axes[MAX_AXES];
-	INT32 buttons[MAX_BUTTONS];
-	INT32 hatsU[MAX_HATS], hatsD[MAX_HATS], hatsL[MAX_HATS], hatsR[MAX_HATS];
-	INT32 balls[MAX_AXES];
+	int32_t axes[MAX_AXES];
+	int32_t buttons[MAX_BUTTONS];
+	int32_t hatsU[MAX_HATS], hatsD[MAX_HATS], hatsL[MAX_HATS], hatsR[MAX_HATS];
+	int32_t balls[MAX_AXES];
 };
 
 struct sdl_api_state
@@ -300,10 +338,10 @@ public:
 	sdl_joystick_state    joystick;
 	sdl_api_state         sdl_state;
 
-	sdl_joystick_device(running_machine &machine, const char *name, input_module &module)
-		: sdl_device(machine, name, DEVICE_CLASS_JOYSTICK, module),
+	sdl_joystick_device(running_machine &machine, const char *name, const char *id, input_module &module)
+		: sdl_device(machine, name, id, DEVICE_CLASS_JOYSTICK, module),
 			joystick({{0}}),
-			sdl_state({0})
+			sdl_state({ nullptr })
 	{
 	}
 
@@ -381,8 +419,8 @@ public:
 class sdl_sixaxis_joystick_device : public sdl_joystick_device
 {
 public:
-	sdl_sixaxis_joystick_device(running_machine &machine, const char *name, input_module &module)
-		: sdl_joystick_device(machine, name, module)
+	sdl_sixaxis_joystick_device(running_machine &machine, const char *name, const char *id, input_module &module)
+		: sdl_joystick_device(machine, name, id, module)
 	{
 	}
 
@@ -454,11 +492,12 @@ public:
 		return sdl_event_manager::instance().has_focus() && input_enabled();
 	}
 
-	virtual void handle_event(SDL_Event &sdlevent) override
+	void handle_event(SDL_Event &sdlevent) override
 	{
 		// By default dispatch event to every device
-		for (int i = 0; i < devicelist()->size(); i++)
-			downcast<sdl_device*>(devicelist()->at(i))->queue_events(&sdlevent, 1);
+		devicelist()->for_each_device([&sdlevent](auto device) {
+			downcast<sdl_device*>(device)->queue_events(&sdlevent, 1);
+		});
 	}
 };
 
@@ -471,7 +510,7 @@ class sdl_keyboard_module : public sdl_input_module
 	keyboard_trans_table * m_key_trans_table;
 public:
 	sdl_keyboard_module()
-		: sdl_input_module(OSD_KEYBOARDINPUT_PROVIDER)
+		: sdl_input_module(OSD_KEYBOARDINPUT_PROVIDER), m_key_trans_table(nullptr)
 	{
 	}
 
@@ -479,8 +518,13 @@ public:
 	{
 		sdl_input_module::input_init(machine);
 
-		SDL_EventType event_types[] = { SDL_KEYDOWN, SDL_KEYUP, SDL_TEXTINPUT };
-		sdl_event_manager::instance().subscribe(reinterpret_cast<int*>(event_types), ARRAY_LENGTH(event_types), this);
+		static int event_types[] = {
+			static_cast<int>(SDL_KEYDOWN),
+			static_cast<int>(SDL_KEYUP),
+			static_cast<int>(SDL_TEXTINPUT)
+		};
+
+		sdl_event_manager::instance().subscribe(event_types, ARRAY_LENGTH(event_types), this);
 
 		sdl_keyboard_device *devinfo;
 
@@ -492,7 +536,7 @@ public:
 		osd_printf_verbose("Keyboard: Start initialization\n");
 
 		// SDL only has 1 keyboard add it now
-		devinfo = devicelist()->create_device<sdl_keyboard_device>(machine, "System keyboard", *this);
+		devinfo = devicelist()->create_device<sdl_keyboard_device>(machine, "System keyboard", "System keyboard", *this);
 
 		// populate it
 		for (int keynum = 0; local_table[keynum].mame_key != ITEM_ID_INVALID; keynum++)
@@ -503,7 +547,7 @@ public:
 			char defname[20];
 			snprintf(defname, sizeof(defname) - 1, "%s", local_table[keynum].ui_name);
 
-			devinfo->device()->add_item(defname, itemid, generic_button_get_state, &devinfo->keyboard.state[local_table[keynum].sdl_scancode]);
+			devinfo->device()->add_item(defname, itemid, generic_button_get_state<std::int32_t>, &devinfo->keyboard.state[local_table[keynum].sdl_scancode]);
 		}
 
 		osd_printf_verbose("Keyboard: Registered %s\n", devinfo->name());
@@ -516,7 +560,7 @@ private:
 		char *keymap_filename;
 		FILE *keymap_file;
 		int line = 1;
-		int index, i, sk, vk, ak;
+		int index, len, sk, vk, ak;
 		char buf[256];
 		char mks[41];
 		char sks[41];
@@ -532,7 +576,7 @@ private:
 		osd_printf_verbose("Keymap: Start reading keymap_file %s\n", keymap_filename);
 
 		keymap_file = fopen(keymap_filename, "r");
-		if (keymap_file == NULL)
+		if (keymap_file == nullptr)
 		{
 			osd_printf_warning("Keymap: Unable to open keymap %s, using default\n", keymap_filename);
 			return &default_table;
@@ -554,9 +598,9 @@ private:
 			if (ret && buf[0] != '\n' && buf[0] != '#')
 			{
 				buf[255] = 0;
-				i = strlen(buf);
-				if (i && buf[i - 1] == '\n')
-					buf[i - 1] = 0;
+				len = strlen(buf);
+				if (len && buf[len - 1] == '\n')
+					buf[len - 1] = 0;
 				if (strncmp(buf, "[SDL2]", 6) == 0)
 				{
 					sdl2section = 1;
@@ -612,8 +656,14 @@ public:
 	{
 		sdl_input_module::input_init(machine);
 
-		SDL_EventType event_types[] = { SDL_MOUSEMOTION, SDL_MOUSEBUTTONDOWN, SDL_MOUSEBUTTONUP, SDL_MOUSEWHEEL };
-		sdl_event_manager::instance().subscribe(reinterpret_cast<int*>(event_types), ARRAY_LENGTH(event_types), this);
+		static int event_types[] = {
+			static_cast<int>(SDL_MOUSEMOTION),
+			static_cast<int>(SDL_MOUSEBUTTONDOWN),
+			static_cast<int>(SDL_MOUSEBUTTONUP),
+			static_cast<int>(SDL_MOUSEWHEEL)
+		};
+
+		sdl_event_manager::instance().subscribe(event_types, ARRAY_LENGTH(event_types), this);
 
 		sdl_mouse_device *devinfo;
 		char defname[20];
@@ -622,18 +672,18 @@ public:
 		osd_printf_verbose("Mouse: Start initialization\n");
 
 		// SDL currently only supports one mouse
-		devinfo = devicelist()->create_device<sdl_mouse_device>(machine, "System mouse", *this);
+		devinfo = devicelist()->create_device<sdl_mouse_device>(machine, "System mouse", "System mouse", *this);
 
 		// add the axes
-		devinfo->device()->add_item("X", ITEM_ID_XAXIS, generic_axis_get_state, &devinfo->mouse.lX);
-		devinfo->device()->add_item("Y", ITEM_ID_YAXIS, generic_axis_get_state, &devinfo->mouse.lY);
+		devinfo->device()->add_item("X", ITEM_ID_XAXIS, generic_axis_get_state<std::int32_t>, &devinfo->mouse.lX);
+		devinfo->device()->add_item("Y", ITEM_ID_YAXIS, generic_axis_get_state<std::int32_t>, &devinfo->mouse.lY);
 
 		for (button = 0; button < 4; button++)
 		{
 			input_item_id itemid = (input_item_id)(ITEM_ID_BUTTON1 + button);
 			snprintf(defname, sizeof(defname), "B%d", button + 1);
 
-			devinfo->device()->add_item(defname, itemid, generic_button_get_state, &devinfo->mouse.buttons[button]);
+			devinfo->device()->add_item(defname, itemid, generic_button_get_state<std::int32_t>, &devinfo->mouse.buttons[button]);
 		}
 
 		osd_printf_verbose("Mouse: Registered %s\n", devinfo->name());
@@ -642,29 +692,27 @@ public:
 };
 
 
-static void devmap_register(device_map_t *devmap, int physical_idx, const std::string &name)
+static void devmap_register(device_map_t &devmap, int physical_idx, const std::string &name)
 {
-	int found = 0;
-	int stick, i;
-
-	for (i = 0; i < MAX_DEVMAP_ENTRIES; i++)
+	// Attempt to find the entry by name
+	auto entry = std::find_if(std::begin(devmap.map), std::end(devmap.map), [&name](auto &item)
 	{
-		if (strcmp(name.c_str(), devmap->map[i].name.c_str()) == 0 && devmap->map[i].physical < 0)
-		{
-			devmap->map[i].physical = physical_idx;
-			found = 1;
-			devmap->logical[physical_idx] = i;
-		}
+		return item.name == name && item.physical < 0;
+	});
+
+	// If we didn't find it by name, find the first free slot
+	if (entry == std::end(devmap.map))
+	{
+		entry = std::find_if(std::begin(devmap.map), std::end(devmap.map), [](auto &item) { return item.name.empty(); });
 	}
 
-	if (found == 0)
+	if (entry != std::end(devmap.map))
 	{
-		stick = devmap_leastfree(devmap);
-		devmap->map[stick].physical = physical_idx;
-		devmap->map[stick].name = name;
-		devmap->logical[physical_idx] = stick;
+		entry->physical = physical_idx;
+		entry->name = name;
+		int logical_idx = std::distance(std::begin(devmap.map), entry);
+		devmap.logical[physical_idx] = logical_idx;
 	}
-
 }
 
 //============================================================
@@ -678,27 +726,27 @@ private:
 	bool           m_sixaxis_mode;
 public:
 	sdl_joystick_module()
-		: sdl_input_module(OSD_JOYSTICKINPUT_PROVIDER)
+		: sdl_input_module(OSD_JOYSTICKINPUT_PROVIDER), m_sixaxis_mode(false)
 	{
 	}
-	
+
 	virtual void exit() override
 	{
 		sdl_input_module::exit();
-	
+
 		SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
-	}	
-	
+	}
+
 	virtual void input_init(running_machine &machine) override
 	{
-	    SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
+		SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
 
 		if (SDL_InitSubSystem(SDL_INIT_JOYSTICK))
 		{
 			osd_printf_error("Could not initialize SDL Joystick: %s.\n", SDL_GetError());
 			return;
 		}
-		
+
 		sdl_input_module::input_init(machine);
 
 		char tempname[512];
@@ -712,14 +760,14 @@ public:
 		for (physical_stick = 0; physical_stick < SDL_NumJoysticks(); physical_stick++)
 		{
 				std::string joy_name = remove_spaces(SDL_JoystickNameForIndex(physical_stick));
-				devmap_register(&m_joy_map, physical_stick, joy_name.c_str());
+				devmap_register(m_joy_map, physical_stick, joy_name);
 		}
 
 		for (int stick = 0; stick < MAX_DEVMAP_ENTRIES; stick++)
 		{
 			sdl_joystick_device *devinfo = create_joystick_device(machine, &m_joy_map, stick, DEVICE_CLASS_JOYSTICK);
 
-			if (devinfo == NULL)
+			if (devinfo == nullptr)
 				continue;
 
 			physical_stick = m_joy_map.map[stick].physical;
@@ -744,7 +792,7 @@ public:
 					itemid = ITEM_ID_OTHER_AXIS_ABSOLUTE;
 
 				snprintf(tempname, sizeof(tempname), "A%d %s", axis, devinfo->name());
-				devinfo->device()->add_item(tempname, itemid, generic_axis_get_state, &devinfo->joystick.axes[axis]);
+				devinfo->device()->add_item(tempname, itemid, generic_axis_get_state<std::int32_t>, &devinfo->joystick.axes[axis]);
 			}
 
 			// loop over all buttons
@@ -762,7 +810,7 @@ public:
 					itemid = ITEM_ID_OTHER_SWITCH;
 
 				snprintf(tempname, sizeof(tempname), "button %d", button);
-				devinfo->device()->add_item(tempname, itemid, generic_button_get_state, &devinfo->joystick.buttons[button]);
+				devinfo->device()->add_item(tempname, itemid, generic_button_get_state<std::int32_t>, &devinfo->joystick.buttons[button]);
 			}
 
 			// loop over all hats
@@ -772,16 +820,16 @@ public:
 
 				snprintf(tempname, sizeof(tempname), "hat %d Up", hat);
 				itemid = (input_item_id)((hat < INPUT_MAX_HATS) ? ITEM_ID_HAT1UP + 4 * hat : ITEM_ID_OTHER_SWITCH);
-				devinfo->device()->add_item(tempname, itemid, generic_button_get_state, &devinfo->joystick.hatsU[hat]);
+				devinfo->device()->add_item(tempname, itemid, generic_button_get_state<std::int32_t>, &devinfo->joystick.hatsU[hat]);
 				snprintf(tempname, sizeof(tempname), "hat %d Down", hat);
 				itemid = (input_item_id)((hat < INPUT_MAX_HATS) ? ITEM_ID_HAT1DOWN + 4 * hat : ITEM_ID_OTHER_SWITCH);
-				devinfo->device()->add_item(tempname, itemid, generic_button_get_state, &devinfo->joystick.hatsD[hat]);
+				devinfo->device()->add_item(tempname, itemid, generic_button_get_state<std::int32_t>, &devinfo->joystick.hatsD[hat]);
 				snprintf(tempname, sizeof(tempname), "hat %d Left", hat);
 				itemid = (input_item_id)((hat < INPUT_MAX_HATS) ? ITEM_ID_HAT1LEFT + 4 * hat : ITEM_ID_OTHER_SWITCH);
-				devinfo->device()->add_item(tempname, itemid, generic_button_get_state, &devinfo->joystick.hatsL[hat]);
+				devinfo->device()->add_item(tempname, itemid, generic_button_get_state<std::int32_t>, &devinfo->joystick.hatsL[hat]);
 				snprintf(tempname, sizeof(tempname), "hat %d Right", hat);
 				itemid = (input_item_id)((hat < INPUT_MAX_HATS) ? ITEM_ID_HAT1RIGHT + 4 * hat : ITEM_ID_OTHER_SWITCH);
-				devinfo->device()->add_item(tempname, itemid, generic_button_get_state, &devinfo->joystick.hatsR[hat]);
+				devinfo->device()->add_item(tempname, itemid, generic_button_get_state<std::int32_t>, &devinfo->joystick.hatsR[hat]);
 			}
 
 			// loop over all (track)balls
@@ -795,14 +843,21 @@ public:
 					itemid = ITEM_ID_OTHER_AXIS_RELATIVE;
 
 				snprintf(tempname, sizeof(tempname), "R%d %s", ball * 2, devinfo->name());
-				devinfo->device()->add_item(tempname, (input_item_id)itemid, generic_axis_get_state, &devinfo->joystick.balls[ball * 2]);
+				devinfo->device()->add_item(tempname, (input_item_id)itemid, generic_axis_get_state<std::int32_t>, &devinfo->joystick.balls[ball * 2]);
 				snprintf(tempname, sizeof(tempname), "R%d %s", ball * 2 + 1, devinfo->name());
-				devinfo->device()->add_item(tempname, (input_item_id)(itemid + 1), generic_axis_get_state, &devinfo->joystick.balls[ball * 2 + 1]);
+				devinfo->device()->add_item(tempname, (input_item_id)(itemid + 1), generic_axis_get_state<std::int32_t>, &devinfo->joystick.balls[ball * 2 + 1]);
 			}
 		}
 
-		SDL_EventType event_types[] = { SDL_JOYAXISMOTION, SDL_JOYBALLMOTION, SDL_JOYHATMOTION, SDL_JOYBUTTONDOWN, SDL_JOYBUTTONUP };
-		sdl_event_manager::instance().subscribe(reinterpret_cast<int*>(event_types), ARRAY_LENGTH(event_types), this);
+		static int event_types[] = {
+			static_cast<int>(SDL_JOYAXISMOTION),
+			static_cast<int>(SDL_JOYBALLMOTION),
+			static_cast<int>(SDL_JOYHATMOTION),
+			static_cast<int>(SDL_JOYBUTTONDOWN),
+			static_cast<int>(SDL_JOYBUTTONUP)
+		};
+
+		sdl_event_manager::instance().subscribe(event_types, ARRAY_LENGTH(event_types), this);
 
 		osd_printf_verbose("Joystick: End initialization\n");
 	}
@@ -810,43 +865,41 @@ public:
 	virtual void handle_event(SDL_Event &sdlevent) override
 	{
 		// Figure out which joystick this event id destined for
-		for (int i = 0; i < devicelist()->size(); i++)
+		auto target_device = std::find_if(devicelist()->begin(), devicelist()->end(), [&sdlevent](auto &device)
 		{
-			auto joy = downcast<sdl_joystick_device*>(devicelist()->at(i));
+			std::unique_ptr<device_info> &ptr = device;
+			return downcast<sdl_joystick_device*>(ptr.get())->sdl_state.joystick_id == sdlevent.jdevice.which;
+		});
 
-			// If we find a matching joystick, dispatch the event to the joystick
-			if (joy->sdl_state.joystick_id == sdlevent.jdevice.which)
-				joy->queue_events(&sdlevent, 1);
+		// If we find a matching joystick, dispatch the event to the joystick
+		if (target_device != devicelist()->end())
+		{
+			downcast<sdl_joystick_device*>((*target_device).get())->queue_events(&sdlevent, 1);
 		}
 	}
 
 private:
 	sdl_joystick_device* create_joystick_device(running_machine &machine, device_map_t *devmap, int index, input_device_class devclass)
 	{
-		sdl_joystick_device *devinfo = NULL;
 		char tempname[20];
 
-		if (devmap->map[index].name.length() == 0)
+		if (devmap->map[index].name.empty())
 		{
-			/* only map place holders if there were mappings specified is enabled */
+			// only map place holders if there were mappings specified
 			if (devmap->initialized)
 			{
 				snprintf(tempname, ARRAY_LENGTH(tempname), "NC%d", index);
-				devinfo = m_sixaxis_mode
-					? devicelist()->create_device<sdl_sixaxis_joystick_device>(machine, tempname, *this)
-					: devicelist()->create_device<sdl_joystick_device>(machine, tempname, *this);
+				m_sixaxis_mode
+					? devicelist()->create_device<sdl_sixaxis_joystick_device>(machine, tempname, tempname, *this)
+					: devicelist()->create_device<sdl_joystick_device>(machine, tempname, tempname, *this);
 			}
 
-			return NULL;
-		}
-		else
-		{
-			devinfo = m_sixaxis_mode
-				? devicelist()->create_device<sdl_sixaxis_joystick_device>(machine, devmap->map[index].name.c_str(), *this)
-				: devicelist()->create_device<sdl_joystick_device>(machine, devmap->map[index].name.c_str(), *this);
+			return nullptr;
 		}
 
-		return devinfo;
+		return m_sixaxis_mode
+			? devicelist()->create_device<sdl_sixaxis_joystick_device>(machine, devmap->map[index].name.c_str(), devmap->map[index].name.c_str(), *this)
+			: devicelist()->create_device<sdl_joystick_device>(machine, devmap->map[index].name.c_str(), devmap->map[index].name.c_str(), *this);
 	}
 };
 

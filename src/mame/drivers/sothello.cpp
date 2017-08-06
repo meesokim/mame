@@ -1,4 +1,4 @@
-// license:LGPL-2.1+
+// license:BSD-3-Clause
 // copyright-holders:Tomasz Slanina
 /*
  Super Othello (c)1986 Fujiwara/Success
@@ -37,11 +37,13 @@ OSC  : 8.0000MHz(X1)   21.477 MHz(X2)   384kHz(X3)
 */
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
 #include "cpu/m6809/m6809.h"
+#include "cpu/z80/z80.h"
+#include "machine/gen_latch.h"
 #include "sound/2203intf.h"
 #include "sound/msm5205.h"
 #include "video/v9938.h"
+#include "speaker.h"
 
 
 class sothello_state : public driver_device
@@ -80,9 +82,7 @@ public:
 	virtual void machine_reset() override;
 	TIMER_CALLBACK_MEMBER(subcpu_suspend);
 	TIMER_CALLBACK_MEMBER(subcpu_resume);
-	DECLARE_WRITE_LINE_MEMBER(irqhandler);
 	DECLARE_WRITE_LINE_MEMBER(adpcm_int);
-	DECLARE_WRITE_LINE_MEMBER(sothello_vdp_interrupt);
 	void unlock_shared_ram();
 	required_device<cpu_device> m_maincpu;
 	required_device<cpu_device> m_soundcpu;
@@ -161,7 +161,7 @@ READ8_MEMBER(sothello_state::soundcpu_status_r)
 static ADDRESS_MAP_START( maincpu_mem_map, AS_PROGRAM, 8, sothello_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0xbfff) AM_ROMBANK("bank1")
-	AM_RANGE(0xc000, 0xdfff) AM_RAM AM_MIRROR(0x1800) AM_SHARE("share1")
+	AM_RANGE(0xc000, 0xc7ff) AM_RAM AM_MIRROR(0x1800) AM_SHARE("share1")
 	AM_RANGE(0xe000, 0xffff) AM_RAM
 ADDRESS_MAP_END
 
@@ -174,7 +174,7 @@ static ADDRESS_MAP_START( maincpu_io_map, AS_IO, 8, sothello_state )
 	AM_RANGE( 0x31, 0x31) AM_READ(subcpu_halt_clear)
 	AM_RANGE( 0x32, 0x32) AM_READ(subcpu_comm_status)
 	AM_RANGE( 0x33, 0x33) AM_READ(soundcpu_status_r)
-	AM_RANGE( 0x40, 0x4f) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE( 0x40, 0x4f) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE( 0x50, 0x50) AM_WRITE(bank_w)
 	AM_RANGE( 0x60, 0x61) AM_MIRROR(0x02) AM_DEVREADWRITE("ymsnd", ym2203_device, read, write)
 						/* not sure, but the A1 line is ignored, code @ $8b8 */
@@ -223,7 +223,7 @@ ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( soundcpu_io_map, AS_IO, 8, sothello_state )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
-	AM_RANGE(0x00, 0x00) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x00, 0x00) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x01, 0x01) AM_WRITE(msm_data_w)
 	AM_RANGE(0x02, 0x02) AM_WRITE(msm_cfg_w)
 	AM_RANGE(0x03, 0x03) AM_WRITE(soundcpu_busyflag_set_w)
@@ -328,15 +328,6 @@ static INPUT_PORTS_START( sothello )
 	PORT_BIT( 0x07, IP_ACTIVE_LOW, IPT_UNUSED )
 INPUT_PORTS_END
 
-WRITE_LINE_MEMBER(sothello_state::irqhandler)
-{
-	m_subcpu->set_input_line(0, state ? ASSERT_LINE : CLEAR_LINE);
-}
-
-WRITE_LINE_MEMBER(sothello_state::sothello_vdp_interrupt)
-{
-	m_maincpu->set_input_line(0, (state ? HOLD_LINE : CLEAR_LINE));
-}
 
 WRITE_LINE_MEMBER(sothello_state::adpcm_int)
 {
@@ -349,7 +340,7 @@ void sothello_state::machine_reset()
 {
 }
 
-static MACHINE_CONFIG_START( sothello, sothello_state )
+static MACHINE_CONFIG_START( sothello )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",Z80, MAINCPU_CLOCK)
@@ -360,20 +351,23 @@ static MACHINE_CONFIG_START( sothello, sothello_state )
 	MCFG_CPU_PROGRAM_MAP(soundcpu_mem_map)
 	MCFG_CPU_IO_MAP(soundcpu_io_map)
 
-	MCFG_CPU_ADD("sub",M6809, SUBCPU_CLOCK)
+	MCFG_CPU_ADD("sub", M6809, SUBCPU_CLOCK)
 	MCFG_CPU_PROGRAM_MAP(subcpu_mem_map)
 
 	MCFG_QUANTUM_TIME(attotime::from_hz(600))
 
 	/* video hardware */
 	MCFG_V9938_ADD("v9938", "screen", VDP_MEM, MAIN_CLOCK)
-	MCFG_V99X8_INTERRUPT_CALLBACK(WRITELINE(sothello_state,sothello_vdp_interrupt))
+	MCFG_V99X8_INTERRUPT_CALLBACK(INPUTLINE("maincpu", 0))
 	MCFG_V99X8_SCREEN_ADD_NTSC("screen", "v9938", MAIN_CLOCK)
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ymsnd", YM2203, YM_CLOCK)
-	MCFG_YM2203_IRQ_HANDLER(WRITELINE(sothello_state, irqhandler))
+	MCFG_YM2203_IRQ_HANDLER(INPUTLINE("sub", 0))
 	MCFG_AY8910_PORT_A_READ_CB(IOPORT("DSWA"))
 	MCFG_AY8910_PORT_B_READ_CB(IOPORT("DSWB"))
 	MCFG_SOUND_ROUTE(0, "mono", 0.25)
@@ -383,9 +377,9 @@ static MACHINE_CONFIG_START( sothello, sothello_state )
 
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.30)
 
-	MCFG_SOUND_ADD("msm",MSM5205, MSM_CLOCK)
+	MCFG_SOUND_ADD("msm", MSM5205, MSM_CLOCK)
 	MCFG_MSM5205_VCLK_CB(WRITELINE(sothello_state, adpcm_int))      /* interrupt function */
-	MCFG_MSM5205_PRESCALER_SELECTOR(MSM5205_S48_4B)  /* changed on the fly */
+	MCFG_MSM5205_PRESCALER_SELECTOR(S48_4B)  /* changed on the fly */
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -409,4 +403,4 @@ ROM_START( sothello )
 	ROM_LOAD( "6.7f",   0x8000, 0x8000, CRC(ee80fc78) SHA1(9a9d7925847d7a36930f0761c70f67a9affc5e7c) )
 ROM_END
 
-GAME( 1986, sothello,  0,       sothello,  sothello, driver_device,  0, ROT0, "Success / Fujiwara", "Super Othello", 0 )
+GAME( 1986, sothello,  0,       sothello,  sothello, sothello_state,  0, ROT0, "Success / Fujiwara", "Super Othello", 0 )

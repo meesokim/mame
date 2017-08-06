@@ -168,6 +168,11 @@ ones.  The other 7 words are ignored.  Global scrollx is ignored.
 #include "k054156_k054157_k056832.h"
 #include "konami_helper.h"
 
+#include "video/k055555.h" // still needs k055555_get_palette_index
+
+#define VERBOSE 0
+#include "logmacro.h"
+
 
 /* end common functions */
 
@@ -179,19 +184,18 @@ ones.  The other 7 words are ignored.  Global scrollx is ignored.
 
 
 
-const device_type K056832 = &device_creator<k056832_device>;
+DEFINE_DEVICE_TYPE(K056832, k056832_device, "k056832", "K056832 Tilemap Generator")
 
-k056832_device::k056832_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: device_t(mconfig, K056832, "K056832 Tilemap Generator", tag, owner, clock, "k056832", __FILE__),
+k056832_device::k056832_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, K056832, tag, owner, clock),
 	device_gfx_interface(mconfig, *this),
 	//m_tilemap[K056832_PAGE_COUNT],
 	//*m_pixmap[K056832_PAGE_COUNT],
 	//m_regs[0x20],
 	//m_regsb[4],
-	m_rombase(nullptr),
+	m_rombase(*this, finder_base::DUMMY_TAG),
 	m_num_gfx_banks(0),
 	m_cur_gfx_banks(0),
-	m_gfx_memory_region(nullptr),
 	m_gfx_num(0),
 	m_bpp(-1),
 	m_big(0),
@@ -249,7 +253,7 @@ void k056832_device::create_tilemaps()
 	m_linemap_enabled = 0;
 
 
-	memset(m_line_dirty, 0, sizeof(UINT32) * K056832_PAGE_COUNT * 8);
+	memset(m_line_dirty, 0, sizeof(uint32_t) * K056832_PAGE_COUNT * 8);
 
 	for (i = 0; i < K056832_PAGE_COUNT; i++)
 	{
@@ -292,8 +296,6 @@ void k056832_device::create_tilemaps()
 
 void k056832_device::finalize_init()
 {
-	int i;
-
 	update_page_layout();
 
 	change_rambank();
@@ -302,37 +304,33 @@ void k056832_device::finalize_init()
 	save_item(NAME(m_videoram));
 	save_item(NAME(m_regs));
 	save_item(NAME(m_regsb));
+
+	save_item(NAME(m_cur_gfx_banks));
+
+	save_item(NAME(m_rom_half));
+
+	save_item(NAME(m_layer_assoc_with_page));
+	save_item(NAME(m_layer_offs));
+	save_item(NAME(m_lsram_page));
 	save_item(NAME(m_x));
 	save_item(NAME(m_y));
 	save_item(NAME(m_w));
 	save_item(NAME(m_h));
 	save_item(NAME(m_dx));
 	save_item(NAME(m_dy));
+	save_item(NAME(m_line_dirty));
+	save_item(NAME(m_all_lines_dirty));
+	save_item(NAME(m_page_tile_mode));
+	save_item(NAME(m_last_colorbase));
 	save_item(NAME(m_layer_tile_mode));
-
 	save_item(NAME(m_default_layer_association));
+	save_item(NAME(m_layer_association));
 	save_item(NAME(m_active_layer));
 	save_item(NAME(m_linemap_enabled));
 	save_item(NAME(m_use_ext_linescroll));
 	save_item(NAME(m_uses_tile_banks));
 	save_item(NAME(m_cur_tile_bank));
-	save_item(NAME(m_rom_half));
-	save_item(NAME(m_all_lines_dirty));
-	save_item(NAME(m_page_tile_mode));
 
-	for (i = 0; i < 8; i++)
-	{
-		save_item(NAME(m_layer_offs[i]), i);
-		save_item(NAME(m_lsram_page[i]), i);
-	}
-
-	for (i = 0; i < K056832_PAGE_COUNT; i++)
-	{
-		save_item(NAME(m_line_dirty[i]), i);
-		save_item(NAME(m_all_lines_dirty[i]), i);
-		save_item(NAME(m_page_tile_mode[i]), i);
-		save_item(NAME(m_last_colorbase[i]), i);
-	}
 
 	machine().save().register_postload(save_prepost_delegate(FUNC(k056832_device::postload), this));
 }
@@ -340,6 +338,9 @@ void k056832_device::finalize_init()
 
 void k056832_device::device_start()
 {
+	if (!palette().device().started())
+		throw device_missing_dependencies();
+
 	memset(m_regs,     0x00, sizeof(m_regs) );
 	memset(m_regsb,    0x00, sizeof(m_regsb) );
 
@@ -349,7 +350,7 @@ void k056832_device::device_start()
 /* TODO: understand which elements MUST be init here (to keep correct layer
    associations) and which ones can can be init at RESET, if any */
 
-	create_gfx(m_gfx_memory_region, m_bpp, m_big);
+	create_gfx();
 
 	create_tilemaps();
 
@@ -486,7 +487,7 @@ void k056832_device::get_tile_info(  tile_data &tileinfo, int tile_index, int pa
 
 	const struct K056832_SHIFTMASKS *smptr;
 	int layer, flip, fbits, attr, code, color, flags;
-	UINT16 *pMem;
+	uint16_t *pMem;
 
 	pMem  = &m_videoram[(pageIndex << 12) + (tile_index << 1)];
 
@@ -610,10 +611,7 @@ void k056832_device::SetExtLinescroll( )
 /* generic helper routine for ROM checksumming */
 int k056832_device::rom_read_b( int offset, int blksize, int blksize2, int zerosec )
 {
-	UINT8 *rombase;
 	int base, ret;
-
-	rombase = (UINT8 *)machine().root_device().memregion(m_gfx_memory_region)->base();
 
 	if ((m_rom_half) && (zerosec))
 	{
@@ -631,11 +629,11 @@ int k056832_device::rom_read_b( int offset, int blksize, int blksize2, int zeros
 
 	if (m_rom_half)
 	{
-		ret = rombase[base + 1];
+		ret = m_rombase[base + 1];
 	}
 	else
 	{
-		ret = rombase[base];
+		ret = m_rombase[base];
 		m_rom_half = 1;
 	}
 
@@ -650,9 +648,7 @@ READ16_MEMBER( k056832_device::k_5bpp_rom_word_r )
 	else if (mem_mask == 0x00ff)
 		return rom_read_b(offset * 2 + 1, 4, 5, 0)<<16;
 	else
-	{
-		//LOG(("Non-byte read of tilemap ROM, PC=%x (mask=%x)\n", space.device().safe_pc(), mem_mask));
-	}
+		LOG("Non-byte read of tilemap ROM, PC=%x (mask=%x)\n", space.device().safe_pc(), mem_mask);
 	return 0;
 }
 
@@ -667,9 +663,7 @@ READ32_MEMBER( k056832_device::k_5bpp_rom_long_r )
 	else if (mem_mask == 0x000000ff)
 		return rom_read_b(offset * 4 + 3, 4, 5, 1);
 	else
-	{
-		//LOG(("Non-byte read of tilemap ROM, PC=%x (mask=%x)\n", space.device().safe_pc(), mem_mask));
-	}
+		LOG("Non-byte read of tilemap ROM, PC=%x (mask=%x)\n", space.device().safe_pc(), mem_mask);
 	return 0;
 }
 
@@ -684,21 +678,29 @@ READ32_MEMBER( k056832_device::k_6bpp_rom_long_r )
 	else if (mem_mask == 0x000000ff)
 		return rom_read_b(offset * 4 + 3, 4, 6, 0);
 	else
-	{
-		//LOG(("Non-byte read of tilemap ROM, PC=%x (mask=%x)\n", space.device().safe_pc(), mem_mask));
-	}
+		LOG("Non-byte read of tilemap ROM, PC=%x (mask=%x)\n", space.device().safe_pc(), mem_mask);
 	return 0;
 }
 
+READ8_MEMBER( k056832_device::konmedal_rom_r )
+{
+	uint32_t addr = ((m_regs[0x1b] << 7) | ((m_regs[0x1a] & 0xc) * 0x800)) + offset;
 
+	return m_rombase[addr];
+}
+
+
+READ16_MEMBER( k056832_device::piratesh_rom_r )
+{
+	uint32_t addr = 0x2000 * m_cur_gfx_banks + offset;
+
+	return m_rombase[addr + 1] | (m_rombase[addr] << 8);
+}
 
 
 READ16_MEMBER( k056832_device::rom_word_r )
 {
 	int addr = 0x2000 * m_cur_gfx_banks + 2 * offset;
-
-	if (!m_rombase)
-		m_rombase = space.machine().root_device().memregion(m_gfx_memory_region)->base();
 
 	return m_rombase[addr + 1] | (m_rombase[addr] << 8);
 }
@@ -709,9 +711,6 @@ READ16_MEMBER( k056832_device::mw_rom_word_r )
 {
 	int bank = 10240 * m_cur_gfx_banks;
 	int addr;
-
-	if (!m_rombase)
-		m_rombase = space.machine().root_device().memregion(m_gfx_memory_region)->base();
 
 	if (m_regsb[2] & 0x8)
 	{
@@ -772,9 +771,6 @@ READ16_MEMBER( k056832_device::bishi_rom_word_r )
 {
 	int addr = 0x4000 * m_cur_gfx_banks + offset;
 
-	if (!m_rombase)
-		m_rombase = space.machine().root_device().memregion(m_gfx_memory_region)->base();
-
 	return m_rombase[addr + 2] | (m_rombase[addr] << 8);
 }
 
@@ -782,18 +778,12 @@ READ16_MEMBER( k056832_device::rom_word_8000_r )
 {
 	int addr = 0x8000 * m_cur_gfx_banks + 2 * offset;
 
-	if (!m_rombase)
-		m_rombase = space.machine().root_device().memregion(m_gfx_memory_region)->base();
-
 	return m_rombase[addr + 2] | (m_rombase[addr] << 8);
 }
 
 READ16_MEMBER( k056832_device::old_rom_word_r )
 {
 	int addr = 0x2000 * m_cur_gfx_banks + 2 * offset;
-
-	if (!m_rombase)
-		m_rombase = space.machine().root_device().memregion(m_gfx_memory_region)->base();
 
 	return m_rombase[addr + 1] | (m_rombase[addr] << 8);
 }
@@ -824,7 +814,7 @@ READ16_MEMBER( k056832_device::ram_half_word_r )
 
 READ32_MEMBER( k056832_device::ram_long_r )
 {
-	UINT16 *pMem = &m_videoram[m_selected_page_x4096 + offset * 2];
+	uint16_t *pMem = &m_videoram[m_selected_page_x4096 + offset * 2];
 
 	// reading from tile RAM resets the ROM readback "half" offset
 	m_rom_half = 0;
@@ -834,7 +824,7 @@ READ32_MEMBER( k056832_device::ram_long_r )
 
 READ32_MEMBER( k056832_device::unpaged_ram_long_r )
 {
-	UINT16 *pMem = &m_videoram[offset * 2];
+	uint16_t *pMem = &m_videoram[offset * 2];
 
 	// reading from tile RAM resets the ROM readback "half" offset
 	m_rom_half = 0;
@@ -845,35 +835,35 @@ READ32_MEMBER( k056832_device::unpaged_ram_long_r )
 /* special 8-bit handlers for Lethal Enforcers */
 READ8_MEMBER( k056832_device::ram_code_lo_r )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
 
 	return *adr & 0xff;
 }
 
 READ8_MEMBER( k056832_device::ram_code_hi_r )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
 
 	return *adr >> 8;
 }
 
 READ8_MEMBER( k056832_device::ram_attr_lo_r )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
 
 	return *adr & 0xff;
 }
 
 READ8_MEMBER( k056832_device::ram_attr_hi_r )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
 
 	return *adr >> 8;
 }
 
 WRITE8_MEMBER( k056832_device::ram_code_lo_w )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
 
 	*adr &= 0xff00;
 	*adr |= data;
@@ -889,7 +879,7 @@ WRITE8_MEMBER( k056832_device::ram_code_lo_w )
 
 WRITE8_MEMBER( k056832_device::ram_code_hi_w )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2) + 1];
 
 	*adr &= 0x00ff;
 	*adr |= data << 8;
@@ -905,7 +895,7 @@ WRITE8_MEMBER( k056832_device::ram_code_hi_w )
 
 WRITE8_MEMBER( k056832_device::ram_attr_lo_w )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
 
 	*adr &= 0xff00;
 	*adr |= data;
@@ -921,7 +911,7 @@ WRITE8_MEMBER( k056832_device::ram_attr_lo_w )
 
 WRITE8_MEMBER( k056832_device::ram_attr_hi_w )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (offset * 2)];
 
 	*adr &= 0x00ff;
 	*adr |= data << 8;
@@ -937,8 +927,8 @@ WRITE8_MEMBER( k056832_device::ram_attr_hi_w )
 
 WRITE16_MEMBER( k056832_device::ram_word_w )
 {
-	UINT16 *tile_ptr;
-	UINT16 old_mask, old_data;
+	uint16_t *tile_ptr;
+	uint16_t old_mask, old_data;
 
 	tile_ptr = &m_videoram[m_selected_page_x4096 + offset];
 	old_mask = ~mem_mask;
@@ -961,8 +951,8 @@ WRITE16_MEMBER( k056832_device::ram_word_w )
 
 WRITE16_MEMBER( k056832_device::ram_half_word_w )
 {
-	UINT16 *adr = &m_videoram[m_selected_page_x4096 + (((offset << 1) & 0xffe) | 1)];
-	UINT16 old = *adr;
+	uint16_t *adr = &m_videoram[m_selected_page_x4096 + (((offset << 1) & 0xffe) | 1)];
+	uint16_t old = *adr;
 
 	COMBINE_DATA(adr);
 	if(*adr != old)
@@ -980,12 +970,12 @@ WRITE16_MEMBER( k056832_device::ram_half_word_w )
 
 WRITE32_MEMBER( k056832_device::ram_long_w )
 {
-	UINT16 *tile_ptr;
-	UINT32 old_mask, old_data;
+	uint16_t *tile_ptr;
+	uint32_t old_mask, old_data;
 
 	tile_ptr = &m_videoram[m_selected_page_x4096 + offset * 2];
 	old_mask = ~mem_mask;
-	old_data = (UINT32)tile_ptr[0] << 16 | (UINT32)tile_ptr[1];
+	old_data = (uint32_t)tile_ptr[0] << 16 | (uint32_t)tile_ptr[1];
 	data = (data & mem_mask) | (old_data & old_mask);
 
 	if (data != old_data)
@@ -1005,12 +995,12 @@ WRITE32_MEMBER( k056832_device::ram_long_w )
 
 WRITE32_MEMBER( k056832_device::unpaged_ram_long_w )
 {
-	UINT16 *tile_ptr;
-	UINT32 old_mask, old_data;
+	uint16_t *tile_ptr;
+	uint32_t old_mask, old_data;
 
 	tile_ptr = &m_videoram[offset * 2];
 	old_mask = ~mem_mask;
-	old_data = (UINT32)tile_ptr[0] << 16 | (UINT32)tile_ptr[1];
+	old_data = (uint32_t)tile_ptr[0] << 16 | (uint32_t)tile_ptr[1];
 	data = (data & mem_mask) | (old_data & old_mask);
 
 	if (data != old_data)
@@ -1028,7 +1018,7 @@ WRITE32_MEMBER( k056832_device::unpaged_ram_long_w )
 WRITE16_MEMBER( k056832_device::word_w )
 {
 	int layer, flip, mask, i;
-	UINT32 old_data, new_data;
+	uint32_t old_data, new_data;
 
 	old_data = m_regs[offset];
 	COMBINE_DATA(&m_regs[offset]);
@@ -1133,12 +1123,12 @@ WRITE16_MEMBER( k056832_device::word_w )
 
 				if (offset >= 0x20/2 && offset <= 0x26/2)
 				{
-					m_dy[layer] = (INT16)new_data;
+					m_dy[layer] = (int16_t)new_data;
 				} else
 
 				if (offset >= 0x28/2 && offset <= 0x2e/2)
 				{
-					m_dx[layer] = (INT16)new_data;
+					m_dx[layer] = (int16_t)new_data;
 				}
 			break;
 		}
@@ -1212,9 +1202,9 @@ int k056832_device::update_linemap( screen_device &screen, _BitmapClass &bitmap,
 	{
 		rectangle zerorect;
 		tilemap_t *tmap;
-		UINT32 *dirty;
+		uint32_t *dirty;
 		int all_dirty;
-		UINT8 *xprdata;
+		uint8_t *xprdata;
 
 		tmap = m_tilemap[page];
 		bitmap_ind8 &xprmap  = tmap->flagsmap();
@@ -1249,12 +1239,12 @@ int k056832_device::update_linemap( screen_device &screen, _BitmapClass &bitmap,
 		{
 			bitmap_ind16 *pixmap;
 
-			UINT8 code_transparent, code_opaque;
+			uint8_t code_transparent, code_opaque;
 			const pen_t *pal_ptr;
-			const UINT8  *src_ptr;
-			UINT8  *xpr_ptr;
-			UINT16 *dst_ptr;
-			UINT16 pen, basepen;
+			const uint8_t  *src_ptr;
+			uint8_t  *xpr_ptr;
+			uint16_t *dst_ptr;
+			uint16_t pen, basepen;
 			int count, src_pitch, src_modulo;
 			int dst_pitch;
 			int line;
@@ -1322,9 +1312,9 @@ int k056832_device::update_linemap( screen_device &screen, _BitmapClass &bitmap,
 }
 
 template<class _BitmapClass>
-void k056832_device::tilemap_draw_common( screen_device &screen, _BitmapClass &bitmap, const rectangle &cliprect, int layer, UINT32 flags, UINT32 priority )
+void k056832_device::tilemap_draw_common( screen_device &screen, _BitmapClass &bitmap, const rectangle &cliprect, int layer, uint32_t flags, uint32_t priority )
 {
-	UINT32 last_dx, last_visible, new_colorbase, last_active;
+	uint32_t last_dx, last_visible, new_colorbase, last_active;
 	int sx, sy, ay, tx, ty, width, height;
 	int clipw, clipx, cliph, clipy, clipmaxy;
 	int line_height, line_endy, line_starty, line_y;
@@ -1334,8 +1324,8 @@ void k056832_device::tilemap_draw_common( screen_device &screen, _BitmapClass &b
 	int dminy, dmaxy, dminx, dmaxx;
 	rectangle drawrect;
 	tilemap_t *tmap;
-	UINT16 *p_scroll_data;
-	UINT16 ram16[2];
+	uint16_t *p_scroll_data;
+	uint16_t ram16[2];
 
 	int rowstart = m_y[layer];
 	int colstart = m_x[layer];
@@ -1643,16 +1633,16 @@ printf("\nend\n");
 	m_active_layer = last_active;
 } // end of function
 
-void k056832_device::tilemap_draw( screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect, int layer, UINT32 flags, UINT32 priority )
+void k056832_device::tilemap_draw( screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect, int layer, uint32_t flags, uint32_t priority )
 { tilemap_draw_common(screen, bitmap, cliprect, layer, flags, priority); }
 
-void k056832_device::tilemap_draw( screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect, int layer, UINT32 flags, UINT32 priority )
+void k056832_device::tilemap_draw( screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect, int layer, uint32_t flags, uint32_t priority )
 { tilemap_draw_common(screen, bitmap, cliprect, layer, flags, priority); }
 
 
-void k056832_device::tilemap_draw_dj( screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect, int layer, UINT32 flags, UINT32 priority )
+void k056832_device::tilemap_draw_dj( screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect, int layer, uint32_t flags, uint32_t priority )
 {
-	UINT32 last_dx, last_visible, new_colorbase, last_active;
+	uint32_t last_dx, last_visible, new_colorbase, last_active;
 	int sx, sy, ay, tx, ty, width, height;
 	int clipw, clipx, cliph, clipy, clipmaxy;
 	int line_height, line_endy, line_starty, line_y;
@@ -1662,8 +1652,8 @@ void k056832_device::tilemap_draw_dj( screen_device &screen, bitmap_rgb32 &bitma
 	int dminy, dmaxy, dminx, dmaxx;
 	rectangle drawrect;
 	tilemap_t *tmap;
-	UINT16 *p_scroll_data;
-	UINT16 ram16[2];
+	uint16_t *p_scroll_data;
+	uint16_t ram16[2];
 
 	int rowstart = m_y[layer];
 	int colstart = m_x[layer];
@@ -1997,11 +1987,11 @@ READ16_MEMBER( k056832_device::b_word_r )
 /***************************************************************************/
 
 
-void k056832_device::create_gfx(const char *gfx_memory_region, int bpp, int big)
+void k056832_device::create_gfx()
 {
 	int gfx_index = 0;
 	int i;
-	UINT32 total;
+	uint32_t total;
 
 	static const gfx_layout charlayout8 =
 	{
@@ -2054,58 +2044,75 @@ void k056832_device::create_gfx(const char *gfx_memory_region, int bpp, int big)
 		{ 0*8*4, 1*8*4, 2*8*4, 3*8*4, 4*8*4, 5*8*4, 6*8*4, 7*8*4 },
 		8*8*4
 	};
-	static const gfx_layout charlayout4dj =
+
+	static const gfx_layout charlayout4ps =
 	{
-		8, 8,
-		0,
-		4,
-		{ 8*3,8*1,8*2,8*0 },
+		8, 8, // W, H
+		0, // Total num elements
+		4, // No. Bit planes
+		{ 8*2,8*0,8*3,8*1 }, // Bit plane offsets
 		{ 0, 1, 2, 3, 4, 5, 6, 7 },
 		{ 0, 8*4, 8*4*2, 8*4*3, 8*4*4, 8*4*5, 8*4*6, 8*4*7 },
-		8*8*4
+		8*8*4 // Increment
 	};
 
-	m_bpp = bpp;
+	static const gfx_layout charlayout4dj =
+	{
+		8, 8, // W, H
+		0, // Total num elements
+		4, // No. Bit planes
+		{ 8*3,8*1,8*2,8*0 }, // Bit plane offsets
+		{ 0, 1, 2, 3, 4, 5, 6, 7 },
+		{ 0, 8*4, 8*4*2, 8*4*3, 8*4*4, 8*4*5, 8*4*6, 8*4*7 },
+		8*8*4 // Increment
+	};
+
+
 
 	/* handle the various graphics formats */
-	i = (big) ? 8 : 16;
+	i = (m_big) ? 8 : 16;
 
 	/* decode the graphics */
-	switch (bpp)
+	switch (m_bpp)
 	{
 		case K056832_BPP_4:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*4);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout4, 4);
+			total = m_rombase.bytes() / (i*4);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout4, 4);
 			break;
 
 		case K056832_BPP_5:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*5);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout5, 5);
+			total = m_rombase.bytes() / (i*5);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout5, 5);
 			break;
 
 		case K056832_BPP_6:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*6);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout6, 6);
+			total = m_rombase.bytes() / (i*6);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout6, 6);
 			break;
 
 		case K056832_BPP_8:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*8);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout8, 8);
+			total = m_rombase.bytes() / (i*8);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout8, 8);
 			break;
 
 		case K056832_BPP_8LE:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*8);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout8le, 8);
+			total = m_rombase.bytes() / (i*8);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout8le, 8);
 			break;
 
 		case K056832_BPP_8TASMAN:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*8);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout8, 8);
+			total = m_rombase.bytes() / (i*8);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout8, 8);
+			break;
+
+		case K056832_BPP_4PIRATESH:
+			total = m_rombase.bytes() / (i*4);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout4ps, 4);
 			break;
 
 		case K056832_BPP_4dj:
-			total = machine().root_device().memregion(gfx_memory_region)->bytes() / (i*4);
-			konami_decode_gfx(*this, gfx_index, machine().root_device().memregion(gfx_memory_region)->base(), total, &charlayout4dj, 4);
+			total = m_rombase.bytes() / (i*4);
+			konami_decode_gfx(*this, gfx_index, &m_rombase[0], total, &charlayout4dj, 4);
 			break;
 
 		default:
@@ -2115,11 +2122,9 @@ void k056832_device::create_gfx(const char *gfx_memory_region, int bpp, int big)
 	gfx(gfx_index)->set_granularity(16); /* override */
 	gfx(gfx_index)->set_colors(palette().entries() / 16);
 
-	m_gfx_memory_region = gfx_memory_region;
 	m_gfx_num = gfx_index;
 
-	m_rombase = machine().root_device().memregion(gfx_memory_region)->base();
-	m_num_gfx_banks = machine().root_device().memregion(gfx_memory_region)->bytes() / 0x2000;
+	m_num_gfx_banks = m_rombase.bytes() / 0x2000;
 	m_cur_gfx_banks = 0;
 	m_use_ext_linescroll = 0;
 	m_uses_tile_banks = 0;
@@ -2135,9 +2140,9 @@ int k056832_device::altK056832_update_linemap(screen_device &screen, bitmap_rgb3
 	{
 		rectangle zerorect;
 		tilemap_t *tmap;
-		UINT32 *dirty;
+		uint32_t *dirty;
 		int all_dirty;
-		UINT8 *xprdata;
+		uint8_t *xprdata;
 
 		tmap = m_tilemap[page];
 		bitmap_ind8 &xprmap  = tmap->flagsmap();
@@ -2171,12 +2176,12 @@ int k056832_device::altK056832_update_linemap(screen_device &screen, bitmap_rgb3
 		{
 			bitmap_ind16 *pixmap;
 
-			UINT8 code_transparent, code_opaque;
+			uint8_t code_transparent, code_opaque;
 			const pen_t *pal_ptr;
-			const UINT8  *src_ptr;
-			UINT8  *xpr_ptr;
-			UINT16 *dst_ptr;
-			UINT16 pen, basepen;
+			const uint8_t  *src_ptr;
+			uint8_t  *xpr_ptr;
+			uint16_t *dst_ptr;
+			uint16_t pen, basepen;
 			int count, src_pitch, src_modulo;
 			int dst_pitch;
 			int line;
@@ -2243,9 +2248,9 @@ int k056832_device::altK056832_update_linemap(screen_device &screen, bitmap_rgb3
 	return(0);
 }
 
-void k056832_device::m_tilemap_draw(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect, int layer, UINT32 flags, UINT32 priority)
+void k056832_device::m_tilemap_draw(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect, int layer, uint32_t flags, uint32_t priority)
 {
-	UINT32 last_dx, last_visible, new_colorbase, last_active;
+	uint32_t last_dx, last_visible, new_colorbase, last_active;
 	int sx, sy, ay, tx, ty, width, height;
 	int clipw, clipx, cliph, clipy, clipmaxy;
 	int line_height, line_endy, line_starty, line_y;
@@ -2255,8 +2260,8 @@ void k056832_device::m_tilemap_draw(screen_device &screen, bitmap_rgb32 &bitmap,
 	int dminy, dmaxy, dminx, dmaxx;
 	rectangle drawrect;
 	tilemap_t *tmap;
-	UINT16 *pScrollData;
-	UINT16 ram16[2];
+	uint16_t *pScrollData;
+	uint16_t ram16[2];
 
 	int rowstart = m_y[layer];
 	int colstart = m_x[layer];

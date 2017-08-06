@@ -7,11 +7,17 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/88games.h"
+
 #include "cpu/m6809/konami.h"
 #include "cpu/z80/z80.h"
-#include "sound/2151intf.h"
+#include "machine/gen_latch.h"
 #include "machine/nvram.h"
-#include "includes/88games.h"
+#include "machine/watchdog.h"
+#include "sound/ym2151.h"
+
+#include "screen.h"
+#include "speaker.h"
 
 
 /*************************************
@@ -123,8 +129,8 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8, _88games_state )
 	AM_RANGE(0x3000, 0x37ff) AM_RAM AM_SHARE("nvram")
 	AM_RANGE(0x3800, 0x3fff) AM_READWRITE(bankedram_r, bankedram_w) AM_SHARE("ram")
 	AM_RANGE(0x5f84, 0x5f84) AM_WRITE(k88games_5f84_w)
-	AM_RANGE(0x5f88, 0x5f88) AM_WRITE(watchdog_reset_w)
-	AM_RANGE(0x5f8c, 0x5f8c) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0x5f88, 0x5f88) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
+	AM_RANGE(0x5f8c, 0x5f8c) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0x5f90, 0x5f90) AM_WRITE(k88games_sh_irqtrigger_w)
 	AM_RANGE(0x5f94, 0x5f94) AM_READ_PORT("IN0")
 	AM_RANGE(0x5f95, 0x5f95) AM_READ_PORT("IN1")
@@ -140,7 +146,7 @@ static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, _88games_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x87ff) AM_RAM
 	AM_RANGE(0x9000, 0x9000) AM_WRITE(speech_msg_w)
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xc000, 0xc001) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0xe000, 0xe000) AM_WRITE(speech_control_w)
 ADDRESS_MAP_END
@@ -276,7 +282,7 @@ WRITE8_MEMBER( _88games_state::banking_callback )
 
 void _88games_state::machine_start()
 {
-	UINT8 *ROM = memregion("maincpu")->base() + 0x10000;
+	uint8_t *ROM = memregion("maincpu")->base() + 0x10000;
 
 	m_bank0000->configure_entries(0, 8, &ROM[0x0000], 0x2000);
 	m_bank1000->configure_entries(0, 8, &ROM[0x1000], 0x2000);
@@ -296,7 +302,7 @@ void _88games_state::machine_reset()
 	m_k88games_priority = 0;
 }
 
-static MACHINE_CONFIG_START( 88games, _88games_state )
+static MACHINE_CONFIG_START( 88games )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", KONAMI, 3000000) /* ? */
@@ -308,6 +314,8 @@ static MACHINE_CONFIG_START( 88games, _88games_state )
 	MCFG_CPU_PROGRAM_MAP(sound_map)
 
 	MCFG_NVRAM_ADD_0FILL("nvram")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -337,6 +345,8 @@ static MACHINE_CONFIG_START( 88games, _88games_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_YM2151_ADD("ymsnd", 3579545)
 	MCFG_SOUND_ROUTE(0, "mono", 0.75)
@@ -526,6 +536,6 @@ ROM_END
  *
  *************************************/
 
-GAME( 1988, 88games,  0,       88games, 88games, driver_device, 0, ROT0, "Konami", "'88 Games", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, konami88, 88games, 88games, 88games, driver_device, 0, ROT0, "Konami", "Konami '88", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, hypsptsp, 88games, 88games, 88games, driver_device, 0, ROT0, "Konami", "Hyper Sports Special (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, 88games,  0,       88games, 88games, _88games_state, 0, ROT0, "Konami", "'88 Games", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, konami88, 88games, 88games, 88games, _88games_state, 0, ROT0, "Konami", "Konami '88", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, hypsptsp, 88games, 88games, 88games, _88games_state, 0, ROT0, "Konami", "Hyper Sports Special (Japan)", MACHINE_SUPPORTS_SAVE )

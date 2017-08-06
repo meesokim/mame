@@ -4,7 +4,7 @@
 #include "netlist/devices/nld_system.h"
 #include "netlist/analog/nld_bjt.h"
 
-#define USE_FRONTIERS 1
+#define USE_FRONTIERS 0
 #define USE_FIXED_STV 1
 
 NETLIST_START(dummy)
@@ -13,14 +13,14 @@ NETLIST_START(dummy)
 	PARAM(Solver.ACCURACY, 1e-8)
 	PARAM(Solver.NR_LOOPS, 300)
 	PARAM(Solver.GS_LOOPS, 1)
-	PARAM(Solver.GS_THRESHOLD, 6)
-	PARAM(Solver.ITERATIVE, "W")
-	//PARAM(Solver.ITERATIVE, "MAT")
-	//PARAM(Solver.ITERATIVE, "GMRES")
-	//PARAM(Solver.ITERATIVE, "SOR")
+	//PARAM(Solver.METHOD, "W")
+	PARAM(Solver.METHOD, "MAT_CR")
+	//PARAM(Solver.METHOD, "MAT")
+	//PARAM(Solver.METHOD, "GMRES")
+	//PARAM(Solver.METHOD, "SOR")
 	PARAM(Solver.DYNAMIC_TS, 0)
 	PARAM(Solver.DYNAMIC_LTE, 5e-3)
-	PARAM(Solver.MIN_TIMESTEP, 10e-6)
+	PARAM(Solver.DYNAMIC_MIN_TIMESTEP, 10e-6)
 	PARAM(Solver.PARALLEL, 0)
 	PARAM(Solver.SOR_FACTOR, 1.00)
 	PARAM(Solver.PIVOT, 0)
@@ -29,7 +29,7 @@ NETLIST_START(dummy)
 	PARAM(Solver.ACCURACY, 1e-8)
 	PARAM(Solver.NR_LOOPS, 300)
 	PARAM(Solver.GS_LOOPS, 20)
-	PARAM(Solver.ITERATIVE, "GMRES")
+	PARAM(Solver.METHOD, "GMRES")
 	PARAM(Solver.PARALLEL, 0)
 #endif
 	//FIXME proper models!

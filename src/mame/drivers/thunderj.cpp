@@ -37,9 +37,11 @@
 
 
 #include "emu.h"
-#include "cpu/m68000/m68000.h"
-#include "machine/atarigen.h"
 #include "includes/thunderj.h"
+#include "cpu/m68000/m68000.h"
+#include "machine/watchdog.h"
+#include "machine/atarigen.h"
+#include "speaker.h"
 
 
 
@@ -123,7 +125,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16, thunderj_state )
 	AM_RANGE(0x260010, 0x260011) AM_READ_PORT("260010")
 	AM_RANGE(0x260012, 0x260013) AM_READ(special_port2_r)
 	AM_RANGE(0x260030, 0x260031) AM_DEVREAD8("jsa", atari_jsa_ii_device, main_response_r, 0x00ff)
-	AM_RANGE(0x2e0000, 0x2e0001) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x2e0000, 0x2e0001) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x360010, 0x360011) AM_WRITE(latch_w)
 	AM_RANGE(0x360020, 0x360021) AM_DEVWRITE("jsa", atari_jsa_ii_device, sound_reset_w)
 	AM_RANGE(0x360030, 0x360031) AM_DEVWRITE8("jsa", atari_jsa_ii_device, main_command_w, 0x00ff)
@@ -245,7 +247,7 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( thunderj, thunderj_state )
+static MACHINE_CONFIG_START( thunderj )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, ATARI_CLOCK_14MHz/2)
@@ -258,6 +260,8 @@ static MACHINE_CONFIG_START( thunderj, thunderj_state )
 	MCFG_MACHINE_RESET_OVERRIDE(thunderj_state,thunderj)
 
 	MCFG_ATARI_EEPROM_2816_ADD("eeprom")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* perfect synchronization due to shared RAM */
 	MCFG_QUANTUM_PERFECT_CPU("maincpu")

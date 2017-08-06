@@ -22,6 +22,7 @@
   Magic Colors (ver. 1.7a),       1999, Unknown.
   Super Gran Safari (ver 3.11),   1996, New Impeuropex Corp.
   Luna Park (ver. 1.2),           1998, ABM Games.
+  Alta Tensione (ver. 2.01a),     199?, Unknown.
 
 *****************************************************************************
 
@@ -55,6 +56,20 @@
   In this subgame, you must to hit the lion to get the prize.
   For now, you must miss the shot till hopper & ticket dispenser are properly emulated.
 
+
+  * Alta Tensione
+
+  First time boot instructions:
+
+  As soon as you get the "DATI NVRAM-68K NON VALIDI!!!" screen...
+
+  - Press F2 to enter the Test Mode.
+  - Press HOLD 5 (AZZERAMENTO) (key 'b')
+  - Press HOLD 1 (AZZERAMENTO TOTALE) (key 'z')
+  - Press HOLD 4 (SI) (key 'v') when the legend "CONFERMI AZZERAMENTO TOTALE" appear.
+  - Press BET (key 'm') twice to leave the Test Mode and start the game...
+
+
 *****************************************************************************
 
   TODO:
@@ -74,18 +89,22 @@
 ****************************************************************************/
 
 
+#include "emu.h"
+
+#include "cpu/m68000/m68000.h"
+#include "machine/nvram.h"
+#include "sound/okim6295.h"
+#include "screen.h"
+#include "speaker.h"
+
+#include "sgsafari.lh"
+#include "musicsrt.lh"
+
+
 #define MAIN_CLOCK    XTAL_20MHz
 #define AUX_CLOCK     XTAL_30MHz
 
 #define CPU_CLOCK    MAIN_CLOCK/2
-
-
-#include "emu.h"
-#include "cpu/m68000/m68000.h"
-#include "sound/okim6295.h"
-#include "machine/nvram.h"
-#include "sgsafari.lh"
-#include "musicsrt.lh"
 
 
 class magic10_state : public driver_device
@@ -104,12 +123,12 @@ public:
 	tilemap_t *m_layer0_tilemap;
 	tilemap_t *m_layer1_tilemap;
 	tilemap_t *m_layer2_tilemap;
-	required_shared_ptr<UINT16> m_layer0_videoram;
-	required_shared_ptr<UINT16> m_layer1_videoram;
-	required_shared_ptr<UINT16> m_layer2_videoram;
+	required_shared_ptr<uint16_t> m_layer0_videoram;
+	required_shared_ptr<uint16_t> m_layer1_videoram;
+	required_shared_ptr<uint16_t> m_layer2_videoram;
 	int m_layer2_offset[2];
-	required_shared_ptr<UINT16> m_vregs;
-	UINT16 m_magic102_ret;
+	required_shared_ptr<uint16_t> m_vregs;
+	uint16_t m_magic102_ret;
 	DECLARE_WRITE16_MEMBER(layer0_videoram_w);
 	DECLARE_WRITE16_MEMBER(layer1_videoram_w);
 	DECLARE_WRITE16_MEMBER(layer2_videoram_w);
@@ -122,11 +141,12 @@ public:
 	DECLARE_DRIVER_INIT(magic102);
 	DECLARE_DRIVER_INIT(magic10);
 	DECLARE_DRIVER_INIT(hotslot);
+	DECLARE_DRIVER_INIT(altaten);
 	TILE_GET_INFO_MEMBER(get_layer0_tile_info);
 	TILE_GET_INFO_MEMBER(get_layer1_tile_info);
 	TILE_GET_INFO_MEMBER(get_layer2_tile_info);
 	virtual void video_start() override;
-	UINT32 screen_update_magic10(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_magic10(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 	required_device<cpu_device> m_maincpu;
 	required_device<gfxdecode_device> m_gfxdecode;
 	required_device<palette_device> m_palette;
@@ -181,15 +201,15 @@ TILE_GET_INFO_MEMBER(magic10_state::get_layer2_tile_info)
 
 void magic10_state::video_start()
 {
-	m_layer0_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(magic10_state::get_layer0_tile_info),this), TILEMAP_SCAN_ROWS, 16, 16, 32, 32);
-	m_layer1_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(magic10_state::get_layer1_tile_info),this), TILEMAP_SCAN_ROWS, 16, 16, 32, 32);
-	m_layer2_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(magic10_state::get_layer2_tile_info),this), TILEMAP_SCAN_ROWS, 8, 8, 64, 64);
+	m_layer0_tilemap = &machine().tilemap().create(*m_gfxdecode, tilemap_get_info_delegate(FUNC(magic10_state::get_layer0_tile_info),this), TILEMAP_SCAN_ROWS, 16, 16, 32, 32);
+	m_layer1_tilemap = &machine().tilemap().create(*m_gfxdecode, tilemap_get_info_delegate(FUNC(magic10_state::get_layer1_tile_info),this), TILEMAP_SCAN_ROWS, 16, 16, 32, 32);
+	m_layer2_tilemap = &machine().tilemap().create(*m_gfxdecode, tilemap_get_info_delegate(FUNC(magic10_state::get_layer2_tile_info),this), TILEMAP_SCAN_ROWS, 8, 8, 64, 64);
 
 	m_layer1_tilemap->set_transparent_pen(0);
 	m_layer2_tilemap->set_transparent_pen(0);
 }
 
-UINT32 magic10_state::screen_update_magic10(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+uint32_t magic10_state::screen_update_magic10(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
 	/*TODO: understand where this comes from. */
 	m_layer2_tilemap->set_scrollx(0, m_layer2_offset[0]);
@@ -717,7 +737,7 @@ GFXDECODE_END
 *      Machine Drivers      *
 ****************************/
 
-static MACHINE_CONFIG_START( magic10, magic10_state )
+static MACHINE_CONFIG_START( magic10 )
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, CPU_CLOCK)  // 10 MHz.
 	MCFG_CPU_PROGRAM_MAP(magic10_map)
@@ -740,7 +760,7 @@ static MACHINE_CONFIG_START( magic10, magic10_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
-	MCFG_OKIM6295_ADD("oki", 1056000, OKIM6295_PIN7_HIGH)   /* clock frequency & pin 7 not verified */
+	MCFG_OKIM6295_ADD("oki", 1056000, PIN7_HIGH)   /* clock frequency & pin 7 not verified */
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -792,15 +812,36 @@ MACHINE_CONFIG_END
 ****************************/
 
 /*
-  Magic 10 (videopoker)
+  Magic's 10 (ver. 16.55)
 
-  1x 68000
-  1x 20mhz OSC near 68k
-  1x Oki M6295
-  1x 30mhz OSC near oki chip
-  2x fpga
-  1x bank of Dipswitch
-  1x Dallas Ds1220y-200 Nonvolatile ram
+  CPUs:
+  1x MC68000P12 (u1) 16/32-bit Microprocessor (main).
+  1x OKI M6295 (u21) 4-Channel Mixing ADCPM Voice Synthesis LSI (sound).
+  1x KA358           Dual Operational Amplifier (sound).
+  1x TDA2003   (u24) Audio Amplifier (sound).
+
+  1x 20.000MHz. oscillator (OSC1, close to main CPU).
+  1x 30.000MHz. oscillator (OSC2, close to sound).
+  1x blu resonator 1000J (XTAL1, close to sound).
+
+  ROMs:
+  6x M27C1001 (1-6).
+  1x AM27C020 (1).
+
+  RAMs:
+  2x KM6865BP-20 (u4, u59).
+  2x HY6264ALP-70 (u34, u35).
+  2x HM3-65728BK-5 (u50, u51).
+  1x Dallas DS1220Y-200 Nonvolatile RAM.
+
+  PLDs:
+  2x TPC1020BFN-084C1 (u41, u60) (read protected).
+  1x AMPAL16R4PC (u42) (dumped).
+
+  Others:
+  1x 28x2 edge connector.
+  1x trimmer (volume).
+  1x 8x2 DIP switches (DIP1)
 
 */
 ROM_START( magic10 )
@@ -816,6 +857,9 @@ ROM_START( magic10 )
 
 	ROM_REGION( 0x40000, "oki", 0 ) /* ADPCM samples */
 	ROM_LOAD( "u22.bin", 0x00000, 0x40000, CRC(98885246) SHA1(752d549e6248074f2a7f6c5cc4d0bbc44c7fa4c3) )
+
+	ROM_REGION( 0x0400, "plds", 0 ) /* PLDs */
+	ROM_LOAD( "pal16r4.u42", 0x0000, 0x0104, CRC(6d70f3f2) SHA1(44c2be5945c052e057d4e0b03369acb7b9ff5d37) )
 ROM_END
 
 ROM_START( magic10a )
@@ -833,6 +877,42 @@ ROM_START( magic10a )
 	ROM_LOAD( "u22.bin", 0x00000, 0x40000, CRC(98885246) SHA1(752d549e6248074f2a7f6c5cc4d0bbc44c7fa4c3) )
 ROM_END
 
+/*
+  Magic's 10 (ver. 16.45)
+
+  1995, A.W.P. Games
+  Version: 16.15
+
+  CPU:
+  1x MC68000P12 (u1) 16/32-bit Microprocessor (main).
+  1x OKI M6295  (u21) 4-Channel Mixing ADCPM Voice Synthesis LSI (sound).
+  1x KA358            Dual Operational Amplifier (sound).
+  1x TDA2003    (u24) Audio Amplifier (sound).
+
+  1x 20.000MHz. oscillator (OSC1, close to main CPU).
+  1x 30.000MHz. oscillator (OSC2, close to sound).
+  1x blu resonator 1000J (XTAL1, close to sound).
+
+  ROMs:
+  6x M27C1001 (1-6).
+  1x AM27C020 (1).
+
+  RAMs:
+  2x KM6865BP-20 (u4, u59).
+  2x HY6264ALP-70 (u34, u35).
+  2x HM3-65728BK-5 (u50, u51).
+  1x DS1220Y-200
+
+  PLDs:
+  2x TPC1020BFN-084C1 (u41, u60) (read protected).
+  1x AMPAL16R4PC (u42) dumped.
+
+  Others:
+  1x 28x2 edge connector.
+  1x trimmer (volume).
+  1x 8x2 DIP switches (DIP1).
+
+*/
 ROM_START( magic10b )
 	ROM_REGION( 0x40000, "maincpu", 0 ) /* 68000 code */
 	ROM_LOAD16_BYTE( "u3_1645.bin",  0x00000, 0x20000, CRC(7f2549e4) SHA1(6578ad29273c357faae7c6be3fa1b49087e088a2) )
@@ -869,7 +949,7 @@ ROM_END
 
   ROMs:
   1x M27C2001 (1)
-  6x M27C1001 (2,3,5,6,7)
+  5x M27C1001 (2,3,5,6,7)
   1x TMS27C010A (4)
   1x PALCE16V8H (read protected)
 
@@ -988,30 +1068,48 @@ ROM_END
   Hot Slot
 
   CPU:
-  1x missing CPU (QFP68 socket, u1)
-  1x HD6473308CP10 (u24)(MCU)
-  1x A40MX04-PL84-9828 (u50)
+  1x MC68HC000FN12 (u1) 16/32-bit Microprocessor (main).
+  1x HD6473308CP10 (u24) 16-bit Single-Chip MCU (NOT DUMPED).
+  1x 6295          (u31) 4-Channel Mixing ADCPM Voice Synthesis LSI (sound).
+  1x KA358         (u33) Dual Operational Amplifier (sound).
+  1x TDA2003       (u34) Audio Amplifier (sound).
 
-  1x 6295 (u31)(sound)
-  1x KA358 (u33)(sound)
-  1x TDA2003 (u34)(sound)
+  1x 20.00000 MHz. oscillator (osc1).
+  1x 30.000 MHz. oscillator (osc2).
+  1x blu resonator 1000J (xtal1).
 
-  1x oscillator 20.0000MHz (OSC1)
-  1x 1000J blue resonator (XTAL1)
+  ROMs (1st PCB):
+  2x 27C010 (2,3).
+  2x 27C020 (5,7).
+  3x 27C2001 (1,4,6).
 
-  ROMs:
-  3x 27C2001 (1,4,6)
-  2x 27C020 (5,7)
-  2x 27C010 (2,3)
-  1x GAL16V8D (as PAL16R4)(read protected)
-  1x missing PAL22V10
+  ROMs (2nd PCB):
+  1x AM27C010 (2).
+  1x M27C1001 (3).
+  2x 27C020   (1,7).
+  1x M27C2001 (4).
+  1x AM27C020 (5,6).
 
-  Note:
-  1x 28x2 edge connector
-  1x trimmer (volume)
-  1n trimmer (unknown)
-  3x 12 legs connector (J1,J2,J3)
-  1x 8x2 switches DIP
+  RAMs
+  1x HM6116-70 (u6).
+  4x ZMDU6264ADC-07LLP (u4, u5, u43, u44).
+  2x HM3-65728H-8 (u61, u62).
+
+  PLDs
+  1x A40MX04-PL84 (u50) (not dumped).
+  1x GAL16V8D-25LP (u54), (read protected).
+  1x PALC22V10H-25PC/4 (u22), (read protected).
+
+  Others:
+  1x 28x2 JAMMA edge connector.
+  1x 12 legs connector (J1).
+  1x 12x2 pins jumper (J2, J3).
+  1x 2 pins jumper (J4).
+  1x trimmer (volume)(P1).
+  1x trimmer (unknown)(P2).
+  1x 8x2 DIP switches (DIP1).
+  1x CR2032 3v. lithium battery.
+
 
   - The system RAM test need the bit 7 of offset 0x500005 activated to be successful.
     This offset seems to be a kind of port connected to the MCU.
@@ -1057,6 +1155,7 @@ ROM_END
 
 /*
   Magic Colors
+  PCB marking: Rev.03
 
   CPU:
   1x missing CPU (QFP68 socket, u1)
@@ -1272,6 +1371,72 @@ ROM_START( lunaprk )
 	ROM_LOAD( "1.u32", 0x00000, 0x40000, CRC(47804af7) SHA1(602dc0361869b52532e2adcb0de3cbdd042761b3) )
 ROM_END
 
+/*
+  Alta Tensione (ver. 2.01a)
+  199?, Unknown manufacturer.
+
+  1x  MC68HC000FN12 (u1)    16/32-bit Microprocessor.
+  1x  HD6473308CP10 (u24)   16-bit Single-Chip Microcomputer. NOT DUMPED.
+
+  1x  M6295         (u31)   4-Channel Mixing ADCPM Voice Synthesis LSI.
+  1x  KA358         (u33)   Dual Operational Amplifier.
+  1x  TDA2003       (u34)   Audio Amplifier.
+
+  1x 20.000000MHz oscillator (osc1).
+  1x 30.000MHz oscillator (osc2).
+  1x blu resonator 1000J (xtal1).
+
+  5x MX27C1000APC-12 ROMs(2-6).
+  1x M271001 ROM (7).
+  1x MX27C2000DC-90 ROM (1).
+
+  1x ZMDU6216ADC-08L RAM (u6).
+  4x LP6264D-70LL RAM (u4, u5, u43, u44).
+  2x HM3-65728H-5 RAM (u61, u62).
+
+  1x A40MX04-PL84 (u50), read protected.
+  1x PALCE16V8H-25PC/4 (u54), read protected.
+  1x PALC22V10H-25PC/4 (u22), read protected.
+
+  1x 28x2 JAMMA edge connector.
+  1x 12-legs connector (J1).
+  1x 12-pins jumper (J2, J3).
+  1x 2 pins jumper (J4).
+  1x trimmer (volume)(P1).
+  1x trimmer (unknown)(P2).
+  1x 8x2 DIP switches (DIP1).
+  1x Rayovac 3V. BR20xx lithium battery.
+
+
+  STATUS:
+
+  Memory map = done.
+  Inputs =     done.
+  Machine =    done.
+
+  OKI 6295 =     ok.
+  Screen size =  ok.
+  Fixed layers = yes.
+
+*/
+ROM_START( altaten )
+	ROM_REGION( 0x40000, "maincpu", 0 ) /* 68000 code */
+	ROM_LOAD16_BYTE( "alta_t.2.01a_2.u3", 0x00000, 0x20000, CRC(2ea79d6d) SHA1(2fc5a5c33e3e970b2b631b93238fe2411bdc2be9) )
+	ROM_LOAD16_BYTE( "alta_t.2.01a_3.u2", 0x00001, 0x20000, CRC(62d57606) SHA1(1ad0935f511e22387ce7248f97ce4b89910570d2) )
+
+	ROM_REGION( 0x10000, "mcu", 0 ) /* h8/330 HD6473308cp10 with internal ROM */
+	ROM_LOAD( "mcu",        0x00000, 0x10000, NO_DUMP )
+
+	ROM_REGION( 0x80000, "gfx1", 0 ) /* graphics */
+	ROM_LOAD( "alta_tensione_7.u35", 0x00000, 0x20000, CRC(90446541) SHA1(5d0e11221a762c9c11392c27e6bae931c8d2ad86) )
+	ROM_LOAD( "alta_tensione_6.u36", 0x20000, 0x20000, CRC(84070651) SHA1(00d17d74e0923be41978064331940d145dc5f5e3) )
+	ROM_LOAD( "alta_tensione_5.u37", 0x40000, 0x20000, CRC(68b26756) SHA1(7df0db4ec60b5179f27c08a401a9fa9f7dc316e9) )
+	ROM_LOAD( "alta_tensione_4.u38", 0x60000, 0x20000, CRC(7683d3f5) SHA1(fc6ee8e6763eeb9d2bc5bdadf0507c5d606a69e9) )
+
+	ROM_REGION( 0x080000, "oki", 0 ) /* ADPCM samples */
+	ROM_LOAD( "alta_tensione_1.u32", 0x00000, 0x40000, CRC(4fe79e43) SHA1(7c154cb00e9b64fbdcc218280f2183b816cef20b) )
+ROM_END
+
 
 /****************************
 *       Driver Init         *
@@ -1310,20 +1475,33 @@ DRIVER_INIT_MEMBER(magic10_state, sgsafari)
 	m_layer2_offset[1] = 20;
 }
 
+DRIVER_INIT_MEMBER(magic10_state, altaten)
+{
+	m_layer2_offset[0] = 8;
+	m_layer2_offset[1] = 16;
+
+	// patching the boot protection...
+	uint8_t *rom = memregion("maincpu")->base();
+
+		rom[0x7668] = 0x71;
+		rom[0x7669] = 0x4e;
+}
+
 
 /******************************
 *        Game Drivers         *
 ******************************/
 
-/*     YEAR  NAME      PARENT    MACHINE   INPUT     STATE          INIT      ROT    COMPANY                 FULLNAME                         FLAGS            LAYOUT  */
+//     YEAR  NAME      PARENT    MACHINE   INPUT     STATE          INIT      ROT   COMPANY                 FULLNAME                          FLAGS            LAYOUT
 GAMEL( 1995, magic10,  0,        magic10,  magic10,  magic10_state, magic10,  ROT0, "A.W.P. Games",         "Magic's 10 (ver. 16.55)",        0,               layout_sgsafari )
 GAMEL( 1995, magic10a, magic10,  magic10,  magic10,  magic10_state, magic10,  ROT0, "A.W.P. Games",         "Magic's 10 (ver. 16.54)",        0,               layout_sgsafari )
 GAMEL( 1995, magic10b, magic10,  magic10a, magic10,  magic10_state, magic10,  ROT0, "A.W.P. Games",         "Magic's 10 (ver. 16.45)",        0,               layout_sgsafari )
 GAMEL( 1995, magic10c, magic10,  magic10a, magic10,  magic10_state, magic10,  ROT0, "A.W.P. Games",         "Magic's 10 (ver. 16.15)",        0,               layout_sgsafari )
-GAME(  1997, magic102, 0,        magic102, magic102, magic10_state, magic102, ROT0, "ABM Games",            "Magic's 10 2 (ver 1.1)",         MACHINE_NOT_WORKING                 )
-GAME(  1998, suprpool, 0,        magic102, magic102, magic10_state, suprpool, ROT0, "ABM Games",            "Super Pool (ver. 1.2)",          MACHINE_NOT_WORKING                 )
-GAME(  1996, hotslot,  0,        hotslot,  hotslot,  magic10_state, hotslot,  ROT0, "ABM Electronics",      "Hot Slot (ver. 05.01)",          MACHINE_NOT_WORKING                 )
-GAME(  1999, mcolors,  0,        magic102, magic102, magic10_state, magic102, ROT0, "<unknown>",            "Magic Colors (ver. 1.7a)",       MACHINE_NOT_WORKING                 )
+GAME(  1997, magic102, 0,        magic102, magic102, magic10_state, magic102, ROT0, "ABM Games",            "Magic's 10 2 (ver 1.1)",         MACHINE_NOT_WORKING )
+GAME(  1998, suprpool, 0,        magic102, magic102, magic10_state, suprpool, ROT0, "ABM Games",            "Super Pool (ver. 1.2)",          MACHINE_NOT_WORKING )
+GAME(  1996, hotslot,  0,        hotslot,  hotslot,  magic10_state, hotslot,  ROT0, "ABM Electronics",      "Hot Slot (ver. 05.01)",          MACHINE_NOT_WORKING )
+GAME(  1999, mcolors,  0,        magic102, magic102, magic10_state, magic102, ROT0, "<unknown>",            "Magic Colors (ver. 1.7a)",       MACHINE_NOT_WORKING )
 GAMEL( 1996, sgsafari, 0,        sgsafari, sgsafari, magic10_state, sgsafari, ROT0, "New Impeuropex Corp.", "Super Gran Safari (ver 3.11)",   0,               layout_sgsafari )
 GAMEL( 1995, musicsrt, 0,        magic10a, musicsrt, magic10_state, magic10,  ROT0, "ABM Games",            "Music Sort (ver 2.02, English)", 0,               layout_musicsrt )
-GAME(  1998, lunaprk,  0,        magic102, magic102, magic10_state, suprpool, ROT0, "ABM Games",            "Luna Park (ver. 1.2)",           MACHINE_NOT_WORKING                 )
+GAME(  1998, lunaprk,  0,        magic102, magic102, magic10_state, suprpool, ROT0, "ABM Games",            "Luna Park (ver. 1.2)",           MACHINE_NOT_WORKING )
+GAME(  199?, altaten,  0,        magic102, magic102, magic10_state, altaten,  ROT0, "<unknown>",            "Alta Tensione (ver. 2.01a)",     MACHINE_NOT_WORKING )

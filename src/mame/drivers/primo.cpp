@@ -107,14 +107,15 @@ Interrupts:
 *******************************************************************************/
 
 #include "emu.h"
-#include "sound/speaker.h"
-#include "sound/wave.h"
 #include "includes/primo.h"
+
 #include "cpu/z80/z80.h"
-#include "imagedev/cassette.h"
-#include "imagedev/snapquik.h"
+#include "sound/wave.h"
+#include "screen.h"
+#include "speaker.h"
+
 #include "formats/primoptp.h"
-#include "bus/cbmiec/cbmiec.h"
+
 
 static ADDRESS_MAP_START( primoa_port, AS_IO, 8, primo_state )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
@@ -239,7 +240,7 @@ static const struct CassetteOptions primo_cassette_options = {
 	22050   /* sample frequency */
 };
 
-static MACHINE_CONFIG_START( primoa32, primo_state )
+static MACHINE_CONFIG_START( primoa32 )
 	/* basic machine hardware */
 	MCFG_CPU_ADD( "maincpu", Z80, 2500000 )
 	MCFG_CPU_PROGRAM_MAP( primo32_mem)
@@ -358,7 +359,7 @@ ROM_END
 
 ROM_START( primob64 )
 	ROM_REGION( 0x14000, "maincpu", ROMREGION_ERASEFF )
-	ROM_SYSTEM_BIOS(0, "standart", "Standart")
+	ROM_SYSTEM_BIOS(0, "standard", "Standard")
 	ROMX_LOAD( "b64.rom",     0x10000, 0x4000, CRC(cea28188) SHA1(a77e42e97402e601b78ab3751eac1e85d0bbb4a0), ROM_BIOS(1) )
 	ROM_SYSTEM_BIOS(1, "cdos", "CDOS")
 	ROMX_LOAD( "b64cdos.rom", 0x10000, 0x4000, CRC(73305e4d) SHA1(c090c3430cdf19eed8363377b981e1c21a4ed169), ROM_BIOS(2) )
@@ -372,11 +373,11 @@ ROM_START( primoc64 )
 	ROM_LOAD( "c64_4.rom", 0x13000, 0x1000, CRC(3770e3e6) SHA1(792cc71d8f89eb447f94aded5afc70d626a26030) )
 ROM_END
 
-/*     YEAR  NAME      PARENT    COMPAT MACHINE   INPUT  INIT     COMPANY  FULLNAME */
-COMP ( 1984, primoa32, 0,        0,     primoa32, primo, primo_state, primo32, "Microkey", "Primo A-32" , 0)
-COMP ( 1984, primoa48, primoa32, 0,     primoa48, primo, primo_state, primo48, "Microkey", "Primo A-48" , 0)
-COMP ( 1984, primoa64, primoa32, 0,     primoa64, primo, primo_state, primo64, "Microkey", "Primo A-64" , 0)
-COMP ( 1984, primob32, primoa32, 0,     primob32, primo, primo_state, primo32, "Microkey", "Primo B-32" , 0)
-COMP ( 1984, primob48, primoa32, 0,     primob48, primo, primo_state, primo48, "Microkey", "Primo B-48" , 0)
-COMP ( 1984, primob64, primoa32, 0,     primob64, primo, primo_state, primo64, "Microkey", "Primo B-64" , 0)
-COMP ( 1984, primoc64, primoa32, 0,     primoc64, primo, primo_state, primo64, "Microkey", "Primo C-64" , MACHINE_NOT_WORKING)
+//     YEAR  NAME      PARENT    COMPAT MACHINE   INPUT  STATE        INIT     COMPANY     FULLNAME       FLAGS
+COMP ( 1984, primoa32, 0,        0,     primoa32, primo, primo_state, primo32, "Microkey", "Primo A-32" , 0 )
+COMP ( 1984, primoa48, primoa32, 0,     primoa48, primo, primo_state, primo48, "Microkey", "Primo A-48" , 0 )
+COMP ( 1984, primoa64, primoa32, 0,     primoa64, primo, primo_state, primo64, "Microkey", "Primo A-64" , 0 )
+COMP ( 1984, primob32, primoa32, 0,     primob32, primo, primo_state, primo32, "Microkey", "Primo B-32" , 0 )
+COMP ( 1984, primob48, primoa32, 0,     primob48, primo, primo_state, primo48, "Microkey", "Primo B-48" , 0 )
+COMP ( 1984, primob64, primoa32, 0,     primob64, primo, primo_state, primo64, "Microkey", "Primo B-64" , 0 )
+COMP ( 1984, primoc64, primoa32, 0,     primoc64, primo, primo_state, primo64, "Microkey", "Primo C-64" , MACHINE_NOT_WORKING )

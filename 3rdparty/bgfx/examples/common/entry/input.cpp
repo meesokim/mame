@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2016 Branimir Karadzic. All rights reserved.
+ * Copyright 2010-2017 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -16,9 +16,9 @@
 #include <tinystl/unordered_map.h>
 namespace stl = tinystl;
 
-struct Mouse
+struct InputMouse
 {
-	Mouse()
+	InputMouse()
 		: m_width(1280)
 		, m_height(720)
 		, m_wheelDelta(120)
@@ -35,7 +35,7 @@ struct Mouse
 			m_norm[2] = 0.0f;
 		}
 
-		memset(m_buttons, 0, sizeof(m_buttons) );
+		bx::memSet(m_buttons, 0, sizeof(m_buttons) );
 	}
 
 	void setResolution(uint16_t _width, uint16_t _height)
@@ -69,23 +69,23 @@ struct Mouse
 	bool m_lock;
 };
 
-struct Keyboard
+struct InputKeyboard
 {
-	Keyboard()
-		: m_ring(BX_COUNTOF(m_char) )
+	InputKeyboard()
+		: m_ring(BX_COUNTOF(m_char)-4)
 	{
 	}
 
 	void reset()
 	{
-		memset(m_key, 0, sizeof(m_key) );
-		memset(m_once, 0xff, sizeof(m_once) );
+		bx::memSet(m_key, 0, sizeof(m_key) );
+		bx::memSet(m_once, 0xff, sizeof(m_once) );
 	}
 
 	static uint32_t encodeKeyState(uint8_t _modifiers, bool _down)
 	{
 		uint32_t state = 0;
-		state |= uint32_t(_modifiers)<<16;
+		state |= uint32_t(_down ? _modifiers : 0)<<16;
 		state |= uint32_t(_down)<<8;
 		return state;
 	}
@@ -130,7 +130,7 @@ struct Keyboard
 			popChar();
 		}
 
-		memcpy(&m_char[m_ring.m_current], _char, 4);
+		bx::memCopy(&m_char[m_ring.m_current], _char, 4);
 		m_ring.commit(4);
 	}
 
@@ -169,7 +169,7 @@ struct Gamepad
 
 	void reset()
 	{
-		memset(m_axis, 0, sizeof(m_axis) );
+		bx::memSet(m_axis, 0, sizeof(m_axis) );
 	}
 
 	void setAxis(entry::GamepadAxis::Enum _axis, int32_t _value)
@@ -215,7 +215,7 @@ struct Input
 		for (const InputBinding* binding = _bindings; binding->m_key != entry::Key::None; ++binding)
 		{
 			uint8_t modifiers;
-			bool down =	Keyboard::decodeKeyState(m_keyboard.m_key[binding->m_key], modifiers);
+			bool down = InputKeyboard::decodeKeyState(m_keyboard.m_key[binding->m_key], modifiers);
 
 			if (binding->m_flags == 1)
 			{
@@ -278,8 +278,8 @@ struct Input
 
 	typedef stl::unordered_map<stl::string, const InputBinding*> InputBindingMap;
 	InputBindingMap m_inputBindingsMap;
-	Mouse m_mouse;
-	Keyboard m_keyboard;
+	InputKeyboard m_keyboard;
+	InputMouse m_mouse;
 	Gamepad m_gamepad[ENTRY_CONFIG_MAX_GAMEPADS];
 };
 

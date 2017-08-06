@@ -23,12 +23,16 @@ Notes:
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/mainevt.h"
+#include "includes/konamipt.h"
+
 #include "cpu/z80/z80.h"
 #include "cpu/m6809/hd6309.h"
 #include "cpu/m6809/m6809.h"
-#include "sound/2151intf.h"
-#include "includes/konamipt.h"
-#include "includes/mainevt.h"
+#include "machine/gen_latch.h"
+#include "sound/ym2151.h"
+#include "speaker.h"
+
 
 INTERRUPT_GEN_MEMBER(mainevt_state::mainevt_interrupt)
 {
@@ -152,7 +156,7 @@ WRITE8_MEMBER(mainevt_state::k052109_051960_w)
 
 static ADDRESS_MAP_START( mainevt_map, AS_PROGRAM, 8, mainevt_state )
 	AM_RANGE(0x1f80, 0x1f80) AM_WRITE(mainevt_bankswitch_w)
-	AM_RANGE(0x1f84, 0x1f84) AM_WRITE(soundlatch_byte_w)                /* probably */
+	AM_RANGE(0x1f84, 0x1f84) AM_DEVWRITE("soundlatch", generic_latch_8_device, write) /* probably */
 	AM_RANGE(0x1f88, 0x1f88) AM_WRITE(mainevt_sh_irqtrigger_w)  /* probably */
 	AM_RANGE(0x1f8c, 0x1f8d) AM_WRITENOP    /* ??? */
 	AM_RANGE(0x1f90, 0x1f90) AM_WRITE(mainevt_coin_w)   /* coin counters + lamps */
@@ -177,7 +181,7 @@ ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( devstors_map, AS_PROGRAM, 8, mainevt_state )
 	AM_RANGE(0x1f80, 0x1f80) AM_WRITE(mainevt_bankswitch_w)
-	AM_RANGE(0x1f84, 0x1f84) AM_WRITE(soundlatch_byte_w)                /* probably */
+	AM_RANGE(0x1f84, 0x1f84) AM_DEVWRITE("soundlatch", generic_latch_8_device, write) /* probably */
 	AM_RANGE(0x1f88, 0x1f88) AM_WRITE(mainevt_sh_irqtrigger_w)  /* probably */
 	AM_RANGE(0x1f90, 0x1f90) AM_WRITE(mainevt_coin_w)   /* coin counters + lamps */
 	AM_RANGE(0x1fb2, 0x1fb2) AM_WRITE(dv_nmienable_w)
@@ -203,7 +207,7 @@ static ADDRESS_MAP_START( mainevt_sound_map, AS_PROGRAM, 8, mainevt_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x83ff) AM_RAM
 	AM_RANGE(0x9000, 0x9000) AM_DEVWRITE("upd", upd7759_device, port_w)
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xb000, 0xb00d) AM_DEVREADWRITE("k007232", k007232_device, read, write)
 	AM_RANGE(0xd000, 0xd000) AM_READ(mainevt_sh_busy_r)
 	AM_RANGE(0xe000, 0xe000) AM_WRITE(mainevt_sh_irqcontrol_w)
@@ -213,7 +217,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( devstors_sound_map, AS_PROGRAM, 8, mainevt_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x83ff) AM_RAM
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xb000, 0xb00d) AM_DEVREADWRITE("k007232", k007232_device, read, write)
 	AM_RANGE(0xc000, 0xc001) AM_DEVREADWRITE("ymsnd", ym2151_device,read,write)
 	AM_RANGE(0xe000, 0xe000) AM_WRITE(devstor_sh_irqcontrol_w)
@@ -402,7 +406,7 @@ INTERRUPT_GEN_MEMBER(mainevt_state::devstors_sound_timer_irq)
 		device.execute().set_input_line(0, HOLD_LINE);
 }
 
-static MACHINE_CONFIG_START( mainevt, mainevt_state )
+static MACHINE_CONFIG_START( mainevt )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", HD6309, 3000000*4)  /* ?? */
@@ -438,6 +442,8 @@ static MACHINE_CONFIG_START( mainevt, mainevt_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("k007232", K007232, 3579545)
 	MCFG_K007232_PORT_WRITE_HANDLER(WRITE8(mainevt_state, volume_callback))
 	MCFG_SOUND_ROUTE(0, "mono", 0.20)
@@ -448,7 +454,7 @@ static MACHINE_CONFIG_START( mainevt, mainevt_state )
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( devstors, mainevt_state )
+static MACHINE_CONFIG_START( devstors )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", HD6309, 3000000*4)  /* ?? */
@@ -485,6 +491,8 @@ static MACHINE_CONFIG_START( devstors, mainevt_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_YM2151_ADD("ymsnd", 3579545)
 	MCFG_SOUND_ROUTE(0, "mono", 0.30)
@@ -712,11 +720,11 @@ ROM_END
 
 
 
-GAME( 1988, mainevt,  0,        mainevt,  mainevt, driver_device,  0, ROT0,  "Konami", "The Main Event (4 Players ver. Y)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, mainevto, mainevt,  mainevt,  mainevt, driver_device,  0, ROT0,  "Konami", "The Main Event (4 Players ver. F)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, mainevt2p,mainevt,  mainevt,  mainev2p, driver_device, 0, ROT0,  "Konami", "The Main Event (2 Players ver. X)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, ringohja, mainevt,  mainevt,  mainev2p, driver_device, 0, ROT0,  "Konami", "Ring no Ohja (Japan 2 Players ver. N)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, devstors, 0,        devstors, devstors, driver_device, 0, ROT90, "Konami", "Devastators (ver. Z)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, devstors2,devstors, devstors, devstor2, driver_device, 0, ROT90, "Konami", "Devastators (ver. X)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, devstors3,devstors, devstors, devstors, driver_device, 0, ROT90, "Konami", "Devastators (ver. V)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, garuka,   devstors, devstors, devstor2, driver_device, 0, ROT90, "Konami", "Garuka (Japan ver. W)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, mainevt,  0,        mainevt,  mainevt,  mainevt_state, 0, ROT0,  "Konami", "The Main Event (4 Players ver. Y)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1988, mainevto, mainevt,  mainevt,  mainevt,  mainevt_state, 0, ROT0,  "Konami", "The Main Event (4 Players ver. F)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1988, mainevt2p,mainevt,  mainevt,  mainev2p, mainevt_state, 0, ROT0,  "Konami", "The Main Event (2 Players ver. X)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1988, ringohja, mainevt,  mainevt,  mainev2p, mainevt_state, 0, ROT0,  "Konami", "Ring no Ohja (Japan 2 Players ver. N)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, devstors, 0,        devstors, devstors, mainevt_state, 0, ROT90, "Konami", "Devastators (ver. Z)",                  MACHINE_SUPPORTS_SAVE )
+GAME( 1988, devstors2,devstors, devstors, devstor2, mainevt_state, 0, ROT90, "Konami", "Devastators (ver. X)",                  MACHINE_SUPPORTS_SAVE )
+GAME( 1988, devstors3,devstors, devstors, devstors, mainevt_state, 0, ROT90, "Konami", "Devastators (ver. V)",                  MACHINE_SUPPORTS_SAVE )
+GAME( 1988, garuka,   devstors, devstors, devstor2, mainevt_state, 0, ROT90, "Konami", "Garuka (Japan ver. W)",                 MACHINE_SUPPORTS_SAVE )

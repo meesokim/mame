@@ -10,14 +10,17 @@
 */
 
 #include "emu.h"
+#include "includes/n64.h"
+
 #include "cpu/rsp/rsp.h"
 #include "cpu/mips/mips3.h"
 #include "sound/dmadac.h"
-#include "includes/n64.h"
 #include "bus/generic/slot.h"
 #include "bus/generic/carts.h"
-#include "imagedev/snapquik.h"
+#include "imagedev/harddriv.h"
+#include "screen.h"
 #include "softlist.h"
+#include "speaker.h"
 
 class n64_mess_state : public n64_state
 {
@@ -30,9 +33,11 @@ public:
 	DECLARE_MACHINE_START(n64dd);
 	INTERRUPT_GEN_MEMBER(n64_reset_poll);
 	DECLARE_DEVICE_IMAGE_LOAD_MEMBER(n64_cart);
-	void mempak_format(UINT8* pak);
-	int quickload(device_image_interface &image, const char *file_type, int quickload_size);
-	DECLARE_QUICKLOAD_LOAD_MEMBER( n64dd );
+	void mempak_format(uint8_t* pak);
+	image_init_result disk_load(device_image_interface &image);
+	void disk_unload(device_image_interface &image);
+	DECLARE_DEVICE_IMAGE_LOAD_MEMBER( n64dd );
+	DECLARE_DEVICE_IMAGE_UNLOAD_MEMBER( n64dd );
 };
 
 READ32_MEMBER(n64_mess_state::dd_null_r)
@@ -242,17 +247,7 @@ static INPUT_PORTS_START( n64 )
 
 INPUT_PORTS_END
 
-#if 0
-/* ?? */
-static const mips3_config config =
-{
-	16384,              /* code cache size */
-	8192,               /* data cache size */
-	62500000            /* system clock */
-};
-#endif
-
-void n64_mess_state::mempak_format(UINT8* pak)
+void n64_mess_state::mempak_format(uint8_t* pak)
 {
 	unsigned char pak_header[] =
 	{
@@ -304,9 +299,9 @@ DEVICE_IMAGE_LOAD_MEMBER(n64_mess_state,n64_cart)
 {
 	int i, length;
 	n64_periphs *periphs = machine().device<n64_periphs>("rcp");
-	UINT8 *cart = memregion("user2")->base();
+	uint8_t *cart = memregion("user2")->base();
 
-	if (image.software_entry() == nullptr)
+	if (!image.loaded_through_softlist())
 	{
 		length = image.fread(cart, 0x4000000);
 	}
@@ -321,10 +316,10 @@ DEVICE_IMAGE_LOAD_MEMBER(n64_mess_state,n64_cart)
 	{
 		for (i = 0; i < length; i += 4)
 		{
-			UINT8 b1 = cart[i + 0];
-			UINT8 b2 = cart[i + 1];
-			UINT8 b3 = cart[i + 2];
-			UINT8 b4 = cart[i + 3];
+			uint8_t b1 = cart[i + 0];
+			uint8_t b2 = cart[i + 1];
+			uint8_t b3 = cart[i + 2];
+			uint8_t b4 = cart[i + 3];
 			cart[i + 0] = b3;
 			cart[i + 1] = b4;
 			cart[i + 2] = b1;
@@ -335,10 +330,10 @@ DEVICE_IMAGE_LOAD_MEMBER(n64_mess_state,n64_cart)
 	{
 		for (i = 0; i < length; i += 4)
 		{
-			UINT8 b1 = cart[i + 0];
-			UINT8 b2 = cart[i + 1];
-			UINT8 b3 = cart[i + 2];
-			UINT8 b4 = cart[i + 3];
+			uint8_t b1 = cart[i + 0];
+			uint8_t b2 = cart[i + 1];
+			uint8_t b3 = cart[i + 2];
+			uint8_t b4 = cart[i + 3];
 			cart[i + 0] = b4;
 			cart[i + 1] = b3;
 			cart[i + 2] = b2;
@@ -354,9 +349,9 @@ DEVICE_IMAGE_LOAD_MEMBER(n64_mess_state,n64_cart)
 	if(battery_image)
 	{
 		//printf("Loading\n");
-		UINT8 data[0x30800];
+		uint8_t data[0x30800];
 		battery_image->battery_load(data, 0x30800, 0x00);
-		if (m_sram != NULL)
+		if (m_sram != nullptr)
 		{
 			memcpy(m_sram, data, 0x20000);
 		}
@@ -372,21 +367,21 @@ DEVICE_IMAGE_LOAD_MEMBER(n64_mess_state,n64_cart)
 		mempak_format(periphs->m_save_data.mempak[1]);
 	}
 
-	return IMAGE_INIT_PASS;
+	return image_init_result::PASS;
 }
 
 MACHINE_START_MEMBER(n64_mess_state,n64dd)
 {
 	machine_start();
 	machine().device<n64_periphs>("rcp")->dd_present = true;
-	UINT8 *ipl = memregion("ddipl")->base();
+	uint8_t *ipl = memregion("ddipl")->base();
 
 	for (int i = 0; i < 0x400000; i += 4)
 	{
-		UINT8 b1 = ipl[i + 0];
-		UINT8 b2 = ipl[i + 1];
-		UINT8 b3 = ipl[i + 2];
-		UINT8 b4 = ipl[i + 3];
+		uint8_t b1 = ipl[i + 0];
+		uint8_t b2 = ipl[i + 1];
+		uint8_t b3 = ipl[i + 2];
+		uint8_t b4 = ipl[i + 3];
 		ipl[i + 0] = b1;
 		ipl[i + 1] = b2;
 		ipl[i + 2] = b3;
@@ -394,19 +389,28 @@ MACHINE_START_MEMBER(n64_mess_state,n64dd)
 	}
 }
 
-QUICKLOAD_LOAD_MEMBER(n64_mess_state,n64dd)
+DEVICE_IMAGE_LOAD_MEMBER(n64_mess_state,n64dd)
 {
-	return quickload(image, file_type, quickload_size);
+	return disk_load(image);
 }
 
-int n64_mess_state::quickload(device_image_interface &image, const char *file_type, int quickload_size)
+DEVICE_IMAGE_UNLOAD_MEMBER(n64_mess_state,n64dd)
+{
+	disk_unload(image);
+}
+
+image_init_result n64_mess_state::disk_load(device_image_interface &image)
 {
 	image.fseek(0, SEEK_SET);
-	image.fread(memregion("disk")->base(), quickload_size);
+	image.fread(memregion("disk")->base(), image.length());
 	machine().device<n64_periphs>("rcp")->disk_present = true;
-	return IMAGE_INIT_PASS;
+	return image_init_result::PASS;
 }
 
+void n64_mess_state::disk_unload(device_image_interface &image)
+{
+	machine().device<n64_periphs>("rcp")->disk_present = false;
+}
 
 INTERRUPT_GEN_MEMBER(n64_mess_state::n64_reset_poll)
 {
@@ -414,12 +418,14 @@ INTERRUPT_GEN_MEMBER(n64_mess_state::n64_reset_poll)
 	periphs->poll_reset_button((ioport("RESET")->read() & 1) ? true : false);
 }
 
-static MACHINE_CONFIG_START( n64, n64_mess_state )
+static MACHINE_CONFIG_START( n64 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", VR4300BE, 93750000)
 	MCFG_CPU_FORCE_NO_DRC()
-	MCFG_CPU_CONFIG(config)
+	//MCFG_MIPS3_ICACHE_SIZE(16384) /* ?? */
+	//MCFG_MIPS3_DCACHE_SIZE(8192) /* ?? */
+	//MCFG_MIPS3_SYSTEM_CLOCK(62500000) /* ?? */
 	MCFG_CPU_PROGRAM_MAP(n64_map)
 	MCFG_CPU_VBLANK_INT_DRIVER("screen", n64_mess_state, n64_reset_poll)
 
@@ -444,7 +450,7 @@ static MACHINE_CONFIG_START( n64, n64_mess_state )
 	//MCFG_SCREEN_SIZE(640, 525)
 	//MCFG_SCREEN_VISIBLE_AREA(0, 639, 0, 479)
 	MCFG_SCREEN_UPDATE_DRIVER(n64_state, screen_update_n64)
-	MCFG_SCREEN_VBLANK_DRIVER(n64_state, screen_eof_n64)
+	MCFG_SCREEN_VBLANK_CALLBACK(WRITELINE(n64_state, screen_vblank_n64))
 
 	MCFG_PALETTE_ADD("palette", 0x1000)
 
@@ -478,8 +484,10 @@ static MACHINE_CONFIG_DERIVED( n64dd, n64 )
 	MCFG_GENERIC_EXTENSIONS("v64,z64,rom,n64,bin")
 	MCFG_GENERIC_LOAD(n64_mess_state, n64_cart)
 
-	MCFG_QUICKLOAD_ADD("quickload", n64_mess_state, n64dd, "bin,dsk", 0)
-	MCFG_QUICKLOAD_INTERFACE("n64dd_disk")
+	MCFG_HARDDISK_ADD("n64disk")
+	MCFG_HARDDISK_LOAD(n64_mess_state,n64dd)
+	MCFG_HARDDISK_UNLOAD(n64_mess_state,n64dd)
+	MCFG_HARDDISK_INTERFACE("n64dd_disk")
 
 	MCFG_SOFTWARE_LIST_ADD("dd_list", "n64dd")
 MACHINE_CONFIG_END
@@ -510,7 +518,7 @@ ROM_START( n64dd )
 	ROM_REGION32_BE( 0x400000, "ddipl", ROMREGION_ERASEFF)
 	ROM_LOAD( "64ddipl.bin", 0x000000, 0x400000, CRC(7f933ce2) SHA1(bf861922dcb78c316360e3e742f4f70ff63c9bc3) )
 
-	ROM_REGION32_LE( 0x4400000, "disk", ROMREGION_ERASEFF)
+	ROM_REGION32_BE( 0x4400000, "disk", ROMREGION_ERASEFF)
 
 	ROM_REGION16_BE( 0x80, "normpoint", 0 )
 	ROM_LOAD( "normpnt.rom", 0x00, 0x80, CRC(e7f2a005) SHA1(c27b4a364a24daeee6e99fd286753fd6216362b4) )
@@ -519,5 +527,5 @@ ROM_START( n64dd )
 	ROM_LOAD( "normslp.rom", 0x00, 0x80, CRC(4f2ae525) SHA1(eab43f8cc52c8551d9cff6fced18ef80eaba6f05) )
 ROM_END
 
-CONS(1996, n64,     0,      0,      n64,    n64, driver_device, 0,  "Nintendo", "Nintendo 64", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS )
-CONS(1996, n64dd,   n64,    0,      n64dd,  n64, driver_device, 0,  "Nintendo", "Nintendo 64DD", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS )
+CONS(1996, n64,     0,      0,      n64,    n64, n64_mess_state, 0,  "Nintendo", "Nintendo 64",   MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS )
+CONS(1996, n64dd,   n64,    0,      n64dd,  n64, n64_mess_state, 0,  "Nintendo", "Nintendo 64DD", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS )

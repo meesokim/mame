@@ -39,7 +39,7 @@ public:
 
 	virtual bool open(std::string const &font_path, std::string const &name, int &height);
 	virtual void close();
-	virtual bool get_bitmap(unicode_char chnum, bitmap_argb32 &bitmap, std::int32_t &width, std::int32_t &xoffs, std::int32_t &yoffs);
+	virtual bool get_bitmap(char32_t chnum, bitmap_argb32 &bitmap, std::int32_t &width, std::int32_t &xoffs, std::int32_t &yoffs);
 
 	osd_font_sdl & operator=(osd_font_sdl &&obj)
 	{
@@ -88,7 +88,7 @@ bool osd_font_sdl::open(std::string const &font_path, std::string const &_name, 
 	// if no success, try the font path
 	if (!font)
 	{
-		osd_printf_verbose("Searching font %s in -%s\n", family.c_str(), OPTION_FONTPATH);
+		osd_printf_verbose("Searching font %s in -%s path/s\n", family.c_str(), font_path.c_str());
 		//emu_file file(options().font_path(), OPEN_FLAG_READ);
 		emu_file file(font_path.c_str(), OPEN_FLAG_READ);
 		if (file.open(family.c_str()) == osd_file::error::NONE)
@@ -158,7 +158,7 @@ void osd_font_sdl::close()
 //  pixel of a black & white font
 //-------------------------------------------------
 
-bool osd_font_sdl::get_bitmap(unicode_char chnum, bitmap_argb32 &bitmap, std::int32_t &width, std::int32_t &xoffs, std::int32_t &yoffs)
+bool osd_font_sdl::get_bitmap(char32_t chnum, bitmap_argb32 &bitmap, std::int32_t &width, std::int32_t &xoffs, std::int32_t &yoffs)
 {
 	SDL_Color const fcol = { 0xff, 0xff, 0xff };
 	char ustr[16];

@@ -6,8 +6,9 @@
 //
 //============================================================
 
+#include "emu.h"
 #include "drawgdi.h"
-#include "rendersw.inc"
+#include "rendersw.hxx"
 
 //============================================================
 //  destructor
@@ -45,10 +46,14 @@ int renderer_gdi::create()
 
 render_primitive_list *renderer_gdi::get_primitives()
 {
+	auto win = try_getwindow();
+	if (win == nullptr)
+		return nullptr;
+
 	RECT client;
-	GetClientRect(window().m_hwnd, &client);
-	window().target()->set_bounds(rect_width(&client), rect_height(&client), window().pixel_aspect());
-	return &window().target()->get_primitives();
+	GetClientRect(std::static_pointer_cast<win_window_info>(win)->platform_window(), &client);
+	win->target()->set_bounds(rect_width(&client), rect_height(&client), win->pixel_aspect());
+	return &win->target()->get_primitives();
 }
 
 //============================================================
@@ -57,13 +62,15 @@ render_primitive_list *renderer_gdi::get_primitives()
 
 int renderer_gdi::draw(const int update)
 {
+	auto win = assert_window();
+
 	// we don't have any special resize behaviors
-	if (window().m_resize_state == RESIZE_STATE_PENDING)
-		window().m_resize_state = RESIZE_STATE_NORMAL;
+	if (win->m_resize_state == RESIZE_STATE_PENDING)
+		win->m_resize_state = RESIZE_STATE_NORMAL;
 
 	// get the target bounds
 	RECT bounds;
-	GetClientRect(window().m_hwnd, &bounds);
+	GetClientRect(std::static_pointer_cast<win_window_info>(win)->platform_window(), &bounds);
 
 	// compute width/height/pitch of target
 	int width = rect_width(&bounds);
@@ -75,20 +82,20 @@ int renderer_gdi::draw(const int update)
 	{
 		m_bmsize = pitch * height * 4 * 2;
 		global_free_array(m_bmdata);
-		m_bmdata = global_alloc_array(UINT8, m_bmsize);
+		m_bmdata = global_alloc_array(uint8_t, m_bmsize);
 	}
 
 	// draw the primitives to the bitmap
-	window().m_primlist->acquire_lock();
-	software_renderer<UINT32, 0,0,0, 16,8,0>::draw_primitives(*window().m_primlist, m_bmdata, width, height, pitch);
-	window().m_primlist->release_lock();
+	win->m_primlist->acquire_lock();
+	software_renderer<uint32_t, 0,0,0, 16,8,0>::draw_primitives(*win->m_primlist, m_bmdata, width, height, pitch);
+	win->m_primlist->release_lock();
 
 	// fill in bitmap-specific info
 	m_bminfo.bmiHeader.biWidth = pitch;
 	m_bminfo.bmiHeader.biHeight = -height;
 
 	// blit to the screen
-	StretchDIBits(window().m_dc, 0, 0, width, height,
+	StretchDIBits(win->m_dc, 0, 0, width, height,
 				0, 0, width, height,
 				m_bmdata, &m_bminfo, DIB_RGB_COLORS, SRCCOPY);
 	return 0;

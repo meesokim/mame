@@ -43,24 +43,26 @@ Note about version levels using Mutant Fighter as the example:
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/cninja.h"
+
 #include "cpu/z80/z80.h"
 #include "cpu/m68000/m68000.h"
 #include "cpu/h6280/h6280.h"
-#include "includes/cninja.h"
-#include "includes/decocrpt.h"
+#include "machine/decocrpt.h"
 #include "sound/2203intf.h"
-#include "sound/2151intf.h"
+#include "sound/ym2151.h"
 #include "sound/okim6295.h"
+#include "speaker.h"
 
 WRITE16_MEMBER(cninja_state::cninja_sound_w)
 {
-	soundlatch_byte_w(space, 0, data & 0xff);
+	m_soundlatch->write(space, 0, data & 0xff);
 	m_audiocpu->set_input_line(0, HOLD_LINE);
 }
 
 WRITE16_MEMBER(cninja_state::stoneage_sound_w)
 {
-	soundlatch_byte_w(space, 0, data & 0xff);
+	m_soundlatch->write(space, 0, data & 0xff);
 	m_audiocpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
 
@@ -145,8 +147,8 @@ READ16_MEMBER( cninja_state::cninja_protection_region_0_104_r )
 {
 	int real_address = 0 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
-	UINT16 data = m_deco104->read_data( deco146_addr, mem_mask, cs );
+	uint8_t cs = 0;
+	uint16_t data = m_deco104->read_data( deco146_addr, mem_mask, cs );
 	return data;
 }
 
@@ -154,8 +156,14 @@ WRITE16_MEMBER( cninja_state::cninja_protection_region_0_104_w )
 {
 	int real_address = 0 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
+	uint8_t cs = 0;
 	m_deco104->write_data( space, deco146_addr, data, mem_mask, cs );
+}
+
+READ16_MEMBER(cninja_state::cninjabl2_sprite_dma_r)
+{
+	m_spriteram->copy();
+	return 0;
 }
 
 
@@ -221,8 +229,8 @@ READ16_MEMBER( cninja_state::sshangha_protection_region_8_146_r )
 {
 	int real_address = 0x1a0000 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
-	UINT16 data = m_deco146->read_data( deco146_addr, mem_mask, cs );
+	uint8_t cs = 0;
+	uint16_t data = m_deco146->read_data( deco146_addr, mem_mask, cs );
 	return data;
 }
 
@@ -230,18 +238,18 @@ WRITE16_MEMBER( cninja_state::sshangha_protection_region_8_146_w )
 {
 	int real_address = 0x1a0000 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
+	uint8_t cs = 0;
 	m_deco146->write_data( space, deco146_addr, data, mem_mask, cs );
 }
 
 READ16_MEMBER( cninja_state::sshangha_protection_region_6_146_r )
 {
-//  UINT16 realdat = deco16_60_prot_r(space,offset&0x3ff,mem_mask);
+//  uint16_t realdat = deco16_60_prot_r(space,offset&0x3ff,mem_mask);
 
 	int real_address = 0x198000 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
-	UINT16 data = m_deco146->read_data( deco146_addr, mem_mask, cs );
+	uint8_t cs = 0;
+	uint16_t data = m_deco146->read_data( deco146_addr, mem_mask, cs );
 
 
 //  if ((realdat & mem_mask) != (data & mem_mask))
@@ -257,7 +265,7 @@ WRITE16_MEMBER( cninja_state::sshangha_protection_region_6_146_w )
 
 	int real_address = 0x198000 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
+	uint8_t cs = 0;
 	m_deco146->write_data( space, deco146_addr, data, mem_mask, cs );
 }
 
@@ -327,8 +335,8 @@ READ16_MEMBER( cninja_state::mutantf_protection_region_0_146_r )
 {
 	int real_address = 0 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
-	UINT16 data = m_deco146->read_data( deco146_addr, mem_mask, cs );
+	uint8_t cs = 0;
+	uint16_t data = m_deco146->read_data( deco146_addr, mem_mask, cs );
 	return data;
 }
 
@@ -336,7 +344,7 @@ WRITE16_MEMBER( cninja_state::mutantf_protection_region_0_146_w )
 {
 	int real_address = 0 + (offset *2);
 	int deco146_addr = BITSWAP32(real_address, /* NC */31,30,29,28,27,26,25,24,23,22,21,20,19,18, 13,12,11,/**/      17,16,15,14,    10,9,8, 7,6,5,4, 3,2,1,0) & 0x7fff;
-	UINT8 cs = 0;
+	uint8_t cs = 0;
 	m_deco146->write_data( space, deco146_addr, data, mem_mask, cs );
 }
 
@@ -377,7 +385,7 @@ static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, cninja_state )
 	AM_RANGE(0x110000, 0x110001) AM_DEVREADWRITE("ym2", ym2151_device, read, write)
 	AM_RANGE(0x120000, 0x120001) AM_DEVREADWRITE("oki1", okim6295_device, read, write)
 	AM_RANGE(0x130000, 0x130001) AM_DEVREADWRITE("oki2", okim6295_device, read, write)
-	AM_RANGE(0x140000, 0x140001) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x140000, 0x140001) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x1f0000, 0x1f1fff) AM_RAMBANK("bank8")
 	AM_RANGE(0x1fec00, 0x1fec01) AM_DEVWRITE("audiocpu", h6280_device, timer_w)
 	AM_RANGE(0x1ff400, 0x1ff403) AM_DEVWRITE("audiocpu", h6280_device, irq_status_w)
@@ -389,7 +397,7 @@ static ADDRESS_MAP_START( sound_map_mutantf, AS_PROGRAM, 8, cninja_state )
 	AM_RANGE(0x110000, 0x110001) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0x120000, 0x120001) AM_DEVREADWRITE("oki1", okim6295_device, read, write)
 	AM_RANGE(0x130000, 0x130001) AM_DEVREADWRITE("oki2", okim6295_device, read, write)
-	AM_RANGE(0x140000, 0x140001) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x140000, 0x140001) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x1f0000, 0x1f1fff) AM_RAMBANK("bank8")
 	AM_RANGE(0x1fec00, 0x1fec01) AM_DEVWRITE("audiocpu", h6280_device, timer_w)
 	AM_RANGE(0x1ff400, 0x1ff403) AM_DEVWRITE("audiocpu", h6280_device, irq_status_w)
@@ -399,7 +407,7 @@ static ADDRESS_MAP_START( stoneage_s_map, AS_PROGRAM, 8, cninja_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0x8000, 0x87ff) AM_RAM
 	AM_RANGE(0x8800, 0x8801) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
-	AM_RANGE(0xa000, 0xa000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xa000, 0xa000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x9800, 0x9800) AM_DEVREADWRITE("oki1", okim6295_device, read, write)
 ADDRESS_MAP_END
 
@@ -782,7 +790,7 @@ GFXDECODE_END
 WRITE8_MEMBER(cninja_state::sound_bankswitch_w)
 {
 	/* the second OKIM6295 ROM is bank switched */
-	m_oki2->set_bank_base((data & 1) * 0x40000);
+	m_oki2->set_rom_bank(data & 1);
 }
 
 /**********************************************************************************/
@@ -837,7 +845,7 @@ void cninja_state::machine_reset()
 	m_irq_mask = 0;
 }
 
-static MACHINE_CONFIG_START( cninja, cninja_state )
+static MACHINE_CONFIG_START( cninja )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 12000000)
@@ -905,6 +913,8 @@ static MACHINE_CONFIG_START( cninja, cninja_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, 32220000/8)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 
@@ -914,15 +924,15 @@ static MACHINE_CONFIG_START( cninja, cninja_state )
 	MCFG_SOUND_ROUTE(0, "mono", 0.45)
 	MCFG_SOUND_ROUTE(1, "mono", 0.45)
 
-	MCFG_OKIM6295_ADD("oki1", 32220000/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", 32220000/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.75)
 
-	MCFG_OKIM6295_ADD("oki2", 32220000/16, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki2", 32220000/16, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( stoneage, cninja_state )
+static MACHINE_CONFIG_START( stoneage )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 12000000)
@@ -993,20 +1003,27 @@ static MACHINE_CONFIG_START( stoneage, cninja_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_YM2151_ADD("ymsnd", 32220000/9)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
 	MCFG_SOUND_ROUTE(0, "mono", 0.45)
 	MCFG_SOUND_ROUTE(1, "mono", 0.45)
 
-	MCFG_OKIM6295_ADD("oki1", 32220000/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", 32220000/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.75)
 
-	MCFG_OKIM6295_ADD("oki2", 32220000/16, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki2", 32220000/16, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 MACHINE_CONFIG_END
 
+static MACHINE_CONFIG_DERIVED( cninjabl2, stoneage )
 
-static MACHINE_CONFIG_START( cninjabl, cninja_state )
+	MCFG_SCREEN_MODIFY("screen")
+	MCFG_SCREEN_UPDATE_DRIVER(cninja_state, screen_update_cninjabl2)
+MACHINE_CONFIG_END
+
+static MACHINE_CONFIG_START( cninjabl )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 12000000)
@@ -1066,17 +1083,19 @@ static MACHINE_CONFIG_START( cninjabl, cninja_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_YM2151_ADD("ymsnd", 32220000/9)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
 	MCFG_SOUND_ROUTE(0, "mono", 0.45)
 	MCFG_SOUND_ROUTE(1, "mono", 0.45)
 
-	MCFG_OKIM6295_ADD("oki1", 32220000/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", 32220000/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.75)
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( edrandy, cninja_state )
+static MACHINE_CONFIG_START( edrandy )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 12000000)
@@ -1143,6 +1162,8 @@ static MACHINE_CONFIG_START( edrandy, cninja_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, 32220000/8)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 
@@ -1152,15 +1173,15 @@ static MACHINE_CONFIG_START( edrandy, cninja_state )
 	MCFG_SOUND_ROUTE(0, "mono", 0.45)
 	MCFG_SOUND_ROUTE(1, "mono", 0.45)
 
-	MCFG_OKIM6295_ADD("oki1", 32220000/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", 32220000/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.75)
 
-	MCFG_OKIM6295_ADD("oki2", 32220000/16, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki2", 32220000/16, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.60)
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( robocop2, cninja_state )
+static MACHINE_CONFIG_START( robocop2 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 14000000)
@@ -1230,6 +1251,8 @@ static MACHINE_CONFIG_START( robocop2, cninja_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, 32220000/8)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 0.60)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 0.60)
@@ -1240,17 +1263,17 @@ static MACHINE_CONFIG_START( robocop2, cninja_state )
 	MCFG_SOUND_ROUTE(0, "lspeaker", 0.45)
 	MCFG_SOUND_ROUTE(1, "rspeaker", 0.45)
 
-	MCFG_OKIM6295_ADD("oki1", 32220000/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", 32220000/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 0.75)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 0.75)
 
-	MCFG_OKIM6295_ADD("oki2", 32220000/16, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki2", 32220000/16, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 0.60)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 0.60)
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( mutantf, cninja_state )
+static MACHINE_CONFIG_START( mutantf )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, 14000000)
@@ -1322,17 +1345,19 @@ static MACHINE_CONFIG_START( mutantf, cninja_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_YM2151_ADD("ymsnd", 32220000/9)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 1)) // IRQ2
 	MCFG_YM2151_PORT_WRITE_HANDLER(WRITE8(cninja_state,sound_bankswitch_w))
 	MCFG_SOUND_ROUTE(0, "lspeaker", 0.45)
 	MCFG_SOUND_ROUTE(1, "rspeaker", 0.45)
 
-	MCFG_OKIM6295_ADD("oki1", 32220000/32, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki1", 32220000/32, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 0.75)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 0.75)
 
-	MCFG_OKIM6295_ADD("oki2", 32220000/16, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki2", 32220000/16, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "lspeaker", 0.60)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "rspeaker", 0.60)
 MACHINE_CONFIG_END
@@ -1615,7 +1640,8 @@ ROM_START( cninjabl2 )
 	ROM_LOAD16_BYTE( "gn-03.rom",  0x80001, 0x20000, CRC(1e28e697) SHA1(2313e97f3a34892dfdc338944c0f00538fcae800) )
 
 	ROM_REGION( 0x10000, "audiocpu", 0 ) /* Sound CPU */
-	ROM_LOAD( "audio-prg.3",  0x00000,  0x10000,  CRC(3eb65b6d) SHA1(e6d94223a7b98d33470ad4e387d6ce399b76ea4a) )
+	ROM_LOAD( "audio-prg.3",  0x00000,  0x8000,  CRC(3eb65b6d) SHA1(e6d94223a7b98d33470ad4e387d6ce399b76ea4a) ) // first half empty
+	ROM_CONTINUE(               0x00000,  0x8000 )
 
 	ROM_REGION( 0x020000, "gfx1", 0 )
 	ROM_LOAD16_BYTE( "gl-08.rom",  0x00001,  0x10000,  CRC(33a2b400) SHA1(fdb8de315f33705719c0ac03a61fb56ffbfdf597) )       /* chars */
@@ -2278,10 +2304,16 @@ DRIVER_INIT_MEMBER(cninja_state,stoneage)
 	m_maincpu->space(AS_PROGRAM).install_write_handler(0x1bc0a8, 0x1bc0a9, write16_delegate(FUNC(cninja_state::stoneage_sound_w),this));
 }
 
+DRIVER_INIT_MEMBER(cninja_state,cninjabl2)
+{
+	m_maincpu->space(AS_PROGRAM).install_ram(0x180000, 0x18ffff);
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x1b4000, 0x1b4001, read16_delegate(FUNC(cninja_state::cninjabl2_sprite_dma_r),this));
+}
+
 DRIVER_INIT_MEMBER(cninja_state,mutantf)
 {
-	const UINT8 *src = memregion("gfx2")->base();
-	UINT8 *dst = memregion("gfx1")->base();
+	const uint8_t *src = memregion("gfx2")->base();
+	uint8_t *dst = memregion("gfx1")->base();
 
 	/* The 16x16 graphic has some 8x8 chars in it - decode them in GFX1 */
 	memcpy(dst + 0x50000, dst + 0x10000, 0x10000);
@@ -2294,26 +2326,26 @@ DRIVER_INIT_MEMBER(cninja_state,mutantf)
 
 /**********************************************************************************/
 
-GAME( 1990, edrandy,  0,       edrandy,  edrandy,  driver_device, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (World ver 3)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, edrandy2, edrandy, edrandy,  edrandc,  driver_device, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (World ver 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, edrandy1, edrandy, edrandy,  edrandc,  driver_device, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (World ver 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, edrandyj, edrandy, edrandy,  edrandc,  driver_device, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (Japan ver 3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, edrandy,  0,        edrandy,  edrandy,  cninja_state, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (World ver 3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, edrandy2, edrandy,  edrandy,  edrandc,  cninja_state, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (World ver 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, edrandy1, edrandy,  edrandy,  edrandc,  cninja_state, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (World ver 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, edrandyj, edrandy,  edrandy,  edrandc,  cninja_state, 0,        ROT0, "Data East Corporation", "The Cliffhanger - Edward Randy (Japan ver 3)", MACHINE_SUPPORTS_SAVE )
 
-GAME( 1991, cninja,   0,       cninja,   cninja,   cninja_state,  cninja,   ROT0, "Data East Corporation", "Caveman Ninja (World ver 4)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, cninja1,  cninja,  cninja,   cninja,   cninja_state,  cninja,   ROT0, "Data East Corporation", "Caveman Ninja (World ver 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, cninjau,  cninja,  cninja,   cninjau,  cninja_state,  cninja,   ROT0, "Data East Corporation", "Caveman Ninja (US ver 4)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, joemac,   cninja,  cninja,   cninja,   cninja_state,  cninja,   ROT0, "Data East Corporation", "Tatakae Genshizin Joe & Mac (Japan ver 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, stoneage, cninja,  stoneage, cninja,   cninja_state,  stoneage, ROT0, "bootleg", "Stoneage (bootleg of Caveman Ninja)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, cninjabl, cninja,  cninjabl, cninja,   driver_device, 0,        ROT0, "bootleg",               "Caveman Ninja (bootleg)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, cninjabl2,cninja,  cninjabl, cninja,   driver_device, 0,        ROT0, "bootleg",               "Caveman Ninja (bootleg, alt)", MACHINE_NOT_WORKING )
+GAME( 1991, cninja,   0,        cninja,   cninja,   cninja_state, cninja,   ROT0, "Data East Corporation", "Caveman Ninja (World ver 4)",                  MACHINE_SUPPORTS_SAVE )
+GAME( 1991, cninja1,  cninja,   cninja,   cninja,   cninja_state, cninja,   ROT0, "Data East Corporation", "Caveman Ninja (World ver 1)",                  MACHINE_SUPPORTS_SAVE )
+GAME( 1991, cninjau,  cninja,   cninja,   cninjau,  cninja_state, cninja,   ROT0, "Data East Corporation", "Caveman Ninja (US ver 4)",                     MACHINE_SUPPORTS_SAVE )
+GAME( 1991, joemac,   cninja,   cninja,   cninja,   cninja_state, cninja,   ROT0, "Data East Corporation", "Tatakae Genshizin Joe & Mac (Japan ver 1)",    MACHINE_SUPPORTS_SAVE )
+GAME( 1991, stoneage, cninja,   stoneage, cninja,   cninja_state, stoneage, ROT0, "bootleg",               "Stoneage (bootleg of Caveman Ninja)",          MACHINE_SUPPORTS_SAVE )
+GAME( 1991, cninjabl, cninja,   cninjabl, cninja,   cninja_state, 0,        ROT0, "bootleg",               "Caveman Ninja (bootleg)",                      MACHINE_SUPPORTS_SAVE )
+GAME( 1991, cninjabl2,cninja,   cninjabl2,cninja,   cninja_state, cninjabl2,ROT0, "bootleg",               "Tatakae Genshizin Joe & Mac (Japan, bootleg)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE ) // tile layers need adjusting, sound is wrong
 
-GAME( 1991, robocop2, 0,       robocop2, robocop2, driver_device, 0,        ROT0, "Data East Corporation", "Robocop 2 (Euro/Asia v0.10)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, robocop2u,robocop2,robocop2, robocop2, driver_device, 0,        ROT0, "Data East Corporation", "Robocop 2 (US v0.10)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, robocop2ua,robocop2,robocop2,robocop2, driver_device, 0,        ROT0, "Data East Corporation", "Robocop 2 (US v0.05)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, robocop2j,robocop2,robocop2, robocop2, driver_device, 0,        ROT0, "Data East Corporation", "Robocop 2 (Japan v0.11)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, robocop2, 0,        robocop2, robocop2, cninja_state, 0,        ROT0, "Data East Corporation", "Robocop 2 (Euro/Asia v0.10)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, robocop2u,robocop2, robocop2, robocop2, cninja_state, 0,        ROT0, "Data East Corporation", "Robocop 2 (US v0.10)",        MACHINE_SUPPORTS_SAVE )
+GAME( 1991, robocop2ua,robocop2,robocop2, robocop2, cninja_state, 0,        ROT0, "Data East Corporation", "Robocop 2 (US v0.05)",        MACHINE_SUPPORTS_SAVE )
+GAME( 1991, robocop2j,robocop2, robocop2, robocop2, cninja_state, 0,        ROT0, "Data East Corporation", "Robocop 2 (Japan v0.11)",     MACHINE_SUPPORTS_SAVE )
 
-GAME( 1992, mutantf,  0,       mutantf,  mutantf,  cninja_state,  mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-5)", MACHINE_SUPPORTS_SAVE )
-GAME( 1992, mutantf4, mutantf, mutantf,  mutantf,  cninja_state,  mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-4)", MACHINE_SUPPORTS_SAVE )
-GAME( 1992, mutantf3, mutantf, mutantf,  mutantf,  cninja_state,  mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-3)", MACHINE_SUPPORTS_SAVE )
-GAME( 1992, mutantf2, mutantf, mutantf,  mutantf,  cninja_state,  mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1992, deathbrd, mutantf, mutantf,  mutantf,  cninja_state,  mutantf,  ROT0, "Data East Corporation", "Death Brade (Japan ver JM-3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1992, mutantf,  0,        mutantf,  mutantf,  cninja_state, mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-5)", MACHINE_SUPPORTS_SAVE )
+GAME( 1992, mutantf4, mutantf,  mutantf,  mutantf,  cninja_state, mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-4)", MACHINE_SUPPORTS_SAVE )
+GAME( 1992, mutantf3, mutantf,  mutantf,  mutantf,  cninja_state, mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1992, mutantf2, mutantf,  mutantf,  mutantf,  cninja_state, mutantf,  ROT0, "Data East Corporation", "Mutant Fighter (World ver EM-2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1992, deathbrd, mutantf,  mutantf,  mutantf,  cninja_state, mutantf,  ROT0, "Data East Corporation", "Death Brade (Japan ver JM-3)",    MACHINE_SUPPORTS_SAVE )

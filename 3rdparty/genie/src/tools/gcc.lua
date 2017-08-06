@@ -15,6 +15,7 @@
 	premake.gcc.cc     = "gcc"
 	premake.gcc.cxx    = "g++"
 	premake.gcc.ar     = "ar"
+	premake.gcc.rc     = "windres"
 	premake.gcc.llvm   = false
 
 
@@ -26,6 +27,8 @@
 	{
 		EnableSSE      = "-msse",
 		EnableSSE2     = "-msse2",
+		EnableAVX      = "-mavx",
+		EnableAVX2     = "-mavx2",
 		ExtraWarnings  = "-Wall -Wextra",
 		FatalWarnings  = "-Werror",
 		FloatFast      = "-ffast-math",
@@ -310,6 +313,17 @@
 		return result
 	end
 
+--
+-- Decorate user include file search paths for the GCC command line.
+--
+
+	function premake.gcc.getquoteincludedirs(includedirs)
+		local result = { }
+		for _,dir in ipairs(includedirs) do
+			table.insert(result, "-iquote " .. _MAKE.esc(dir))
+		end
+		return result
+	end
 
 --
 -- Return platform specific project and configuration level

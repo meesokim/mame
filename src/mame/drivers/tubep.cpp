@@ -101,12 +101,15 @@ TP-S.1 TP-S.2 TP-S.3 TP-B.1  8212 TP-B.2 TP-B.3          TP-B.4
 
 
 #include "emu.h"
+#include "includes/tubep.h"
+
 #include "cpu/m6800/m6800.h"
 #include "cpu/z80/z80.h"
 #include "cpu/m6805/m6805.h"
+#include "machine/74259.h"
 #include "sound/ay8910.h"
 #include "sound/msm5205.h"
-#include "includes/tubep.h"
+#include "speaker.h"
 
 
 /*************************************
@@ -116,33 +119,14 @@ TP-S.1 TP-S.2 TP-S.3 TP-B.1  8212 TP-B.2 TP-B.3          TP-B.4
  *************************************/
 
 
-WRITE8_MEMBER(tubep_state::tubep_LS259_w)
+WRITE_LINE_MEMBER(tubep_state::coin1_counter_w)
 {
-	switch(offset)
-	{
-		case 0:
-		case 1:
-				/*
-				    port b0: bit0 - coin 1 counter
-				    port b1  bit0 - coin 2 counter
-				*/
-				machine().bookkeeping().coin_counter_w(offset,data&1);
-				break;
-		case 2:
-				//something...
-				break;
-		case 5:
-				//screen_flip_w(offset,data&1); /* bit 0 = screen flip, active high */
-				break;
-		case 6:
-				tubep_background_romselect_w(space,offset,data);    /* bit0 = 0->select roms: B1,B3,B5; bit0 = 1->select roms: B2,B4,B6 */
-				break;
-		case 7:
-				tubep_colorproms_A4_line_w(space,offset,data);  /* bit0 = line A4 (color proms address) state */
-				break;
-		default:
-				break;
-	}
+	machine().bookkeeping().coin_counter_w(0, state);
+}
+
+WRITE_LINE_MEMBER(tubep_state::coin2_counter_w)
+{
+	machine().bookkeeping().coin_counter_w(1, state);
 }
 
 
@@ -179,7 +163,7 @@ static ADDRESS_MAP_START( tubep_main_portmap, AS_IO, 8, tubep_state )
 	AM_RANGE(0xd0, 0xd0) AM_READ_PORT("P1")
 
 	AM_RANGE(0x80, 0x80) AM_WRITE(main_cpu_irq_line_clear_w)
-	AM_RANGE(0xb0, 0xb7) AM_WRITE(tubep_LS259_w)
+	AM_RANGE(0xb0, 0xb7) AM_DEVWRITE("mainlatch", ls259_device, write_d0)
 	AM_RANGE(0xd0, 0xd0) AM_WRITE(tubep_soundlatch_w)
 ADDRESS_MAP_END
 
@@ -270,7 +254,7 @@ void tubep_state::device_timer(emu_timer &timer, device_timer_id id, int param, 
 		rjammer_scanline_callback(ptr, param);
 		break;
 	default:
-		assert_always(FALSE, "Unknown id in tubep_state::device_timer");
+		assert_always(false, "Unknown id in tubep_state::device_timer");
 	}
 }
 
@@ -393,23 +377,6 @@ ADDRESS_MAP_END
  *
  *************************************/
 
-WRITE8_MEMBER(tubep_state::rjammer_LS259_w)
-{
-	switch(offset)
-	{
-		case 0:
-		case 1:
-				machine().bookkeeping().coin_counter_w(offset,data&1);   /* bit 0 = coin counter */
-				break;
-		case 5:
-				//screen_flip_w(offset,data&1); /* bit 0 = screen flip, active high */
-				break;
-		default:
-				break;
-	}
-}
-
-
 WRITE8_MEMBER(tubep_state::rjammer_soundlatch_w)
 {
 	m_sound_latch = data;
@@ -434,7 +401,7 @@ static ADDRESS_MAP_START( rjammer_main_portmap, AS_IO, 8, tubep_state )
 	AM_RANGE(0xb0, 0xb0) AM_READ_PORT("P1")
 	AM_RANGE(0xc0, 0xc0) AM_READ_PORT("P2")
 
-	AM_RANGE(0xd0, 0xd7) AM_WRITE(rjammer_LS259_w)
+	AM_RANGE(0xd0, 0xd7) AM_DEVWRITE("mainlatch", ls259_device, write_d0)
 	AM_RANGE(0xe0, 0xe0) AM_WRITE(main_cpu_irq_line_clear_w)    /* clear IRQ interrupt */
 	AM_RANGE(0xf0, 0xf0) AM_WRITE(rjammer_soundlatch_w)
 ADDRESS_MAP_END
@@ -560,11 +527,9 @@ WRITE8_MEMBER(tubep_state::rjammer_voice_frequency_select_w)
 	/* bit 0 of data selects voice frequency on MSM5205 */
 	// 0 -4 KHz; 1- 8KHz
 	if (data & 1)
-		m_msm->playmode_w(MSM5205_S48_4B); /* 8 KHz */
+		m_msm->playmode_w(msm5205_device::S48_4B); /* 8 KHz */
 	else
-		m_msm->playmode_w(MSM5205_S96_4B); /* 4 KHz */
-
-	return;
+		m_msm->playmode_w(msm5205_device::S96_4B); /* 4 KHz */
 }
 
 
@@ -730,7 +695,7 @@ static INPUT_PORTS_START( tubep )
 	PORT_DIPNAME( 0x10, 0x00, DEF_STR( Cabinet ) ) PORT_DIPLOCATION("SW2:2")
 	PORT_DIPSETTING(    0x00, DEF_STR( Upright ) )
 	PORT_DIPSETTING(    0x10, DEF_STR( Cocktail ) )
-	PORT_DIPNAME( 0x20, 0x20, "Serivce mode" ) PORT_DIPLOCATION("SW2:1")
+	PORT_DIPNAME( 0x20, 0x20, "Service mode" ) PORT_DIPLOCATION("SW2:1")
 	PORT_DIPSETTING(    0x20, DEF_STR( Off ) )
 	PORT_DIPSETTING(    0x00, DEF_STR( On ) )
 	PORT_BIT( 0x40, IP_ACTIVE_LOW, IPT_UNUSED )
@@ -855,7 +820,7 @@ INPUT_PORTS_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( tubep, tubep_state )
+static MACHINE_CONFIG_START( tubep )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",Z80,16000000 / 4)    /* 4 MHz */
@@ -875,6 +840,14 @@ static MACHINE_CONFIG_START( tubep, tubep_state )
 
 	MCFG_QUANTUM_TIME(attotime::from_hz(6000))
 
+	MCFG_DEVICE_ADD("mainlatch", LS259, 0)
+	MCFG_ADDRESSABLE_LATCH_Q0_OUT_CB(WRITELINE(tubep_state, coin1_counter_w))
+	MCFG_ADDRESSABLE_LATCH_Q1_OUT_CB(WRITELINE(tubep_state, coin2_counter_w))
+	MCFG_ADDRESSABLE_LATCH_Q2_OUT_CB(NOOP) //something...
+	MCFG_ADDRESSABLE_LATCH_Q5_OUT_CB(WRITELINE(tubep_state, screen_flip_w))
+	MCFG_ADDRESSABLE_LATCH_Q6_OUT_CB(WRITELINE(tubep_state, background_romselect_w))
+	MCFG_ADDRESSABLE_LATCH_Q7_OUT_CB(WRITELINE(tubep_state, colorproms_A4_line_w))
+
 	MCFG_MACHINE_START_OVERRIDE(tubep_state,tubep)
 	MCFG_MACHINE_RESET_OVERRIDE(tubep_state,tubep)
 
@@ -889,8 +862,6 @@ static MACHINE_CONFIG_START( tubep, tubep_state )
 	MCFG_PALETTE_ADD("palette", 32 + 256*64)
 
 	MCFG_PALETTE_INIT_OWNER(tubep_state,tubep)
-	MCFG_VIDEO_START_OVERRIDE(tubep_state,tubep)
-	MCFG_VIDEO_RESET_OVERRIDE(tubep_state,tubep)
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
@@ -920,7 +891,7 @@ static MACHINE_CONFIG_DERIVED( tubepb, tubep )
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( rjammer, tubep_state )
+static MACHINE_CONFIG_START( rjammer )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",Z80,16000000 / 4)    /* 4 MHz */
@@ -938,6 +909,11 @@ static MACHINE_CONFIG_START( rjammer, tubep_state )
 	MCFG_CPU_ADD("mcu",NSC8105,6000000) /* 6 MHz Xtal - divided internally ??? */
 	MCFG_CPU_PROGRAM_MAP(nsc_map)
 
+	MCFG_DEVICE_ADD("mainlatch", LS259, 0) // 3A
+	MCFG_ADDRESSABLE_LATCH_Q0_OUT_CB(WRITELINE(tubep_state, coin1_counter_w))
+	MCFG_ADDRESSABLE_LATCH_Q1_OUT_CB(WRITELINE(tubep_state, coin2_counter_w))
+	MCFG_ADDRESSABLE_LATCH_Q5_OUT_CB(WRITELINE(tubep_state, screen_flip_w))
+
 	MCFG_MACHINE_START_OVERRIDE(tubep_state,rjammer)
 	MCFG_MACHINE_RESET_OVERRIDE(tubep_state,rjammer)
 
@@ -953,8 +929,6 @@ static MACHINE_CONFIG_START( rjammer, tubep_state )
 	MCFG_PALETTE_ADD("palette", 64)
 
 	MCFG_PALETTE_INIT_OWNER(tubep_state,rjammer)
-	MCFG_VIDEO_START_OVERRIDE(tubep_state,tubep)
-	MCFG_VIDEO_RESET_OVERRIDE(tubep_state,tubep)
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
@@ -976,7 +950,7 @@ static MACHINE_CONFIG_START( rjammer, tubep_state )
 
 	MCFG_SOUND_ADD("msm", MSM5205, 384000)
 	MCFG_MSM5205_VCLK_CB(WRITELINE(tubep_state, rjammer_adpcm_vck))          /* VCK function */
-	MCFG_MSM5205_PRESCALER_SELECTOR(MSM5205_S48_4B)              /* 8 KHz (changes at run time) */
+	MCFG_MSM5205_PRESCALER_SELECTOR(S48_4B)              /* 8 KHz (changes at run time) */
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -1176,7 +1150,7 @@ ROM_END
  *
  *************************************/
 
-/*     year  rom      parent  machine  inp   init */
-GAME( 1984, tubep,   0,      tubep,   tubep, driver_device,   0, ROT0, "Nichibutsu / Fujitek", "Tube Panic", MACHINE_SUPPORTS_SAVE )
-GAME( 1984, tubepb,  tubep,  tubepb,  tubepb, driver_device,  0, ROT0, "bootleg", "Tube Panic (bootleg)", MACHINE_SUPPORTS_SAVE )
-GAME( 1984, rjammer, 0,      rjammer, rjammer, driver_device, 0, ROT0, "Nichibutsu / Alice", "Roller Jammer", MACHINE_SUPPORTS_SAVE )
+//    year  rom      parent  machine  inp      state        init
+GAME( 1984, tubep,   0,      tubep,   tubep,   tubep_state, 0,    ROT0, "Nichibutsu / Fujitek", "Tube Panic",           MACHINE_SUPPORTS_SAVE )
+GAME( 1984, tubepb,  tubep,  tubepb,  tubepb,  tubep_state, 0,    ROT0, "bootleg",              "Tube Panic (bootleg)", MACHINE_SUPPORTS_SAVE )
+GAME( 1984, rjammer, 0,      rjammer, rjammer, tubep_state, 0,    ROT0, "Nichibutsu / Alice",   "Roller Jammer",        MACHINE_SUPPORTS_SAVE )

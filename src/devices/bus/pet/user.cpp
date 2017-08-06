@@ -6,14 +6,15 @@
 
 **********************************************************************/
 
+#include "emu.h"
 #include "user.h"
 
 // class pet_user_port_device
 
-const device_type PET_USER_PORT = &device_creator<pet_user_port_device>;
+DEFINE_DEVICE_TYPE(PET_USER_PORT, pet_user_port_device, "pet_user_port", "PET user port")
 
-pet_user_port_device::pet_user_port_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock) :
-	device_t(mconfig, PET_USER_PORT, "PET user port", tag, owner, clock, "pet_user_port", __FILE__),
+pet_user_port_device::pet_user_port_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock) :
+	device_t(mconfig, PET_USER_PORT, tag, owner, clock),
 	device_slot_interface(mconfig, *this),
 	m_2_handler(*this),
 	m_3_handler(*this),
@@ -122,9 +123,11 @@ device_pet_user_port_interface::~device_pet_user_port_interface()
 #include "diag.h"
 #include "petuja.h"
 #include "cb2snd.h"
+#include "2joysnd.h"
 
 SLOT_INTERFACE_START( pet_user_port_cards )
 	SLOT_INTERFACE("diag", PET_USERPORT_DIAGNOSTIC_CONNECTOR)
 	SLOT_INTERFACE("petuja", PET_USERPORT_JOYSTICK_ADAPTER)
 	SLOT_INTERFACE("cb2snd", PET_USERPORT_CB2_SOUND_DEVICE)
+	SLOT_INTERFACE("2joysnd", PET_USERPORT_JOYSTICK_AND_SOUND_DEVICE)
 SLOT_INTERFACE_END

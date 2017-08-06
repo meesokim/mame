@@ -275,24 +275,21 @@ Few other notes:
 
 
 #include "emu.h"
+#include "includes/m5.h"
+
 #include "cpu/z80/z80.h"
 #include "cpu/z80/z80daisy.h"
-#include "formats/m5_dsk.h"
-#include "formats/sord_cas.h"
-#include "imagedev/cassette.h"
-#include "bus/centronics/ctronics.h"
-#include "machine/i8255.h"
-#include "machine/ram.h"
-#include "machine/wd_fdc.h" //brno mod
-#include "machine/upd765.h"
 #include "machine/z80ctc.h"
 #include "sound/sn76496.h"
 #include "video/tms9928a.h"
-#include "bus/m5/slot.h"
-#include "bus/m5/rom.h"
-#include "softlist.h"
-#include "includes/m5.h"
 
+#include "bus/m5/rom.h"
+
+#include "softlist.h"
+#include "speaker.h"
+
+#include "formats/m5_dsk.h"
+#include "formats/sord_cas.h"
 
 
 
@@ -326,7 +323,7 @@ READ8_MEMBER( m5_state::sts_r )
 
 	*/
 
-	UINT8 data = 0;
+	uint8_t data = 0;
 
 	// cassette input
 	data |= m_cassette->input() >= 0 ? 1 : 0;
@@ -995,7 +992,7 @@ SLOT_INTERFACE_END
 static const z80_daisy_config m5_daisy_chain[] =
 {
 	{ Z80CTC_TAG },
-	{ NULL }
+	{ nullptr }
 };
 
 
@@ -1054,7 +1051,7 @@ static ADDRESS_MAP_START( brno_io, AS_IO, 8, brno_state )
 	AM_RANGE(0x68, 0x6b) AM_READWRITE(ramsel_r, ramsel_w)                                           //  CASEN 0=access to ramdisk enabled, 0xff=ramdisk access disabled(data protection), &80=ROM2+48k RAM, &81=ROM2+4k RAM
 	AM_RANGE(0x6c, 0x6f) AM_READWRITE(romsel_r, romsel_w)                                           //  RAMEN 0=rom enable; 0xff=rom+sord ram disabled (ramdisk visible)
 //  AM_RANGE(0x70, 0x73) AM_MIRROR(0x04) AM_DEVREADWRITE(I8255A_TAG, i8255_device, read, write)     //  PIO
-	AM_RANGE(0x78, 0x7b) AM_DEVREADWRITE(WD2797_TAG, wd_fdc_t, read, write)                         //  WD2797 registers -> 78 - status/cmd, 79 - track #, 7a - sector #, 7b - data
+	AM_RANGE(0x78, 0x7b) AM_DEVREADWRITE(WD2797_TAG, wd_fdc_device_base, read, write)               //  WD2797 registers -> 78 - status/cmd, 79 - track #, 7a - sector #, 7b - data
 	AM_RANGE(0x7c, 0x7c) AM_READWRITE(fd_r, fd_w)                                                   //  drive select
 ADDRESS_MAP_END
 
@@ -1161,7 +1158,7 @@ READ8_MEMBER( brno_state::fd_r )
 WRITE8_MEMBER( brno_state::fd_w )
 {
 	floppy_image_device *floppy;
-	m_floppy = NULL;
+	m_floppy = nullptr;
 	int disk = 0;
 
 
@@ -1222,13 +1219,15 @@ SLOT_INTERFACE_END
 //-------------------------------------------------
 void m5_state::machine_start()
 {
+	m_cart_ram = nullptr;
+	m_cart = nullptr;
+
 	// register for state saving
 	save_item(NAME(m_fd5_data));
 	save_item(NAME(m_fd5_com));
 	save_item(NAME(m_intra));
 	save_item(NAME(m_ibfa));
 	save_item(NAME(m_obfa));
-
 }
 
 void m5_state::machine_reset()
@@ -1240,26 +1239,28 @@ void m5_state::machine_reset()
 	if (m_cart1->exists())
 	{
 		if (m_cart1->get_type() > 0)
-			m_cart_ram=m_cart1;
+			m_cart_ram = m_cart1;
 		else
-			m_cart=m_cart1;
+			m_cart = m_cart1;
 	}
+
 	if (m_cart2->exists())
 	{
 		if (m_cart2->get_type() > 0)
-			m_cart_ram=m_cart2;
+			m_cart_ram = m_cart2;
 		else
-			m_cart=m_cart2;
+			m_cart = m_cart2;
 	}
+
 	// no cart inserted - there is nothing to do - not allowed in original Sord m5
-	if (m_cart_ram == NULL && m_cart == NULL)
-		{
-			membank("bank1r")->set_base(memregion(Z80_TAG)->base());
-			program.unmap_write(0x0000, 0x1fff);
-		//  program.unmap_readwrite(0x2000, 0x6fff); //if you uncomment this line Sord starts cassette loading but it is not correct on real hw
-			program.unmap_readwrite(0x8000, 0xffff);
-			return;
-		}
+	if (m_cart_ram == nullptr && m_cart == nullptr)
+	{
+		membank("bank1r")->set_base(memregion(Z80_TAG)->base());
+		program.unmap_write(0x0000, 0x1fff);
+	//  program.unmap_readwrite(0x2000, 0x6fff); //if you uncomment this line Sord starts cassette loading but it is not correct on real hw
+		program.unmap_readwrite(0x8000, 0xffff);
+		return;
+	}
 
 	//cart is ram module
 	if (m_cart_ram)
@@ -1381,7 +1382,7 @@ void brno_state::machine_reset()
 	m_romen=true;
 	m_ramen=false;
 
-	floppy_image_device *floppy = NULL;
+	floppy_image_device *floppy = nullptr;
 	floppy = m_floppy0->get_device();
 	m_fdc->set_floppy(floppy);
 	floppy->mon_w(0);
@@ -1395,12 +1396,12 @@ void brno_state::machine_reset()
 //  MACHINE_CONFIG( m5 )
 //-------------------------------------------------
 
-static MACHINE_CONFIG_START( m5, m5_state )
+static MACHINE_CONFIG_START( m5 )
 	// basic machine hardware
 	MCFG_CPU_ADD(Z80_TAG, Z80, XTAL_14_31818MHz/4)
 	MCFG_CPU_PROGRAM_MAP(m5_mem)
 	MCFG_CPU_IO_MAP(m5_io)
-	MCFG_CPU_CONFIG(m5_daisy_chain)
+	MCFG_Z80_DAISY_CHAIN(m5_daisy_chain)
 
 	MCFG_CPU_ADD(Z80_FD5_TAG, Z80, XTAL_14_31818MHz/4)
 	MCFG_CPU_PROGRAM_MAP(fd5_mem)
@@ -1439,8 +1440,8 @@ static MACHINE_CONFIG_START( m5, m5_state )
 	MCFG_FLOPPY_DRIVE_ADD(UPD765_TAG ":0", m5_floppies, "525dd", m5_state::floppy_formats)
 
 	// cartridge
-	MCFG_M5_CARTRIDGE_ADD("cartslot1", m5_cart, NULL)
-	MCFG_M5_CARTRIDGE_ADD("cartslot2", m5_cart, NULL)
+	MCFG_M5_CARTRIDGE_ADD("cartslot1", m5_cart, nullptr)
+	MCFG_M5_CARTRIDGE_ADD("cartslot2", m5_cart, nullptr)
 
 	// software lists
 	MCFG_SOFTWARE_LIST_ADD("cart_list", "m5_cart")
@@ -1486,13 +1487,13 @@ MACHINE_CONFIG_END
 //-------------------------------------------------
 
 
-static MACHINE_CONFIG_DERIVED_CLASS( brno, m5, brno_state )
+static MACHINE_CONFIG_DERIVED( brno, m5 )
 
 	// basic machine hardware
 	MCFG_CPU_MODIFY(Z80_TAG)
 	MCFG_CPU_PROGRAM_MAP(m5_mem_brno)
 	MCFG_CPU_IO_MAP(brno_io)
-//  MCFG_CPU_CONFIG(m5_daisy_chain)
+//  MCFG_Z80_DAISY_CHAIN(m5_daisy_chain)
 
 
 	//remove devices used for fd5 floppy
@@ -1605,7 +1606,7 @@ DRIVER_INIT_MEMBER(brno_state,brno)
 //  SYSTEM DRIVERS
 //**************************************************************************
 
-//    YEAR  NAME    PARENT  COMPAT  MACHINE INPUT   INIT    COMPANY     FULLNAME            FLAGS
-COMP( 1983, m5,     0,      0,      ntsc,   m5, m5_state,       ntsc,   "Sord",     "m.5 (Japan)",      0 )
-COMP( 1983, m5p,    m5,     0,      pal,    m5, m5_state,       pal,    "Sord",     "m.5 (Europe)",     0 )
-COMP( 1983, m5p_brno,   m5,     0,      brno,   m5, brno_state,     brno,   "Sord",     "m.5 (Europe) BRNO mod",    0 )
+//    YEAR  NAME      PARENT  COMPAT  MACHINE  INPUT  STATE       INIT    COMPANY     FULLNAME                 FLAGS
+COMP( 1983, m5,       0,      0,      ntsc,    m5,    m5_state,   ntsc,   "Sord",     "m.5 (Japan)",           0 )
+COMP( 1983, m5p,      m5,     0,      pal,     m5,    m5_state,   pal,    "Sord",     "m.5 (Europe)",          0 )
+COMP( 1983, m5p_brno, m5,     0,      brno,    m5,    brno_state, brno,   "Sord",     "m.5 (Europe) BRNO mod", 0 )
