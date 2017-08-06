@@ -6,7 +6,7 @@
 //
 //============================================================
 
-#include "emu.h"
+#include "emucore.h"
 
 #include "target.h"
 
@@ -37,7 +37,7 @@ bgfx_target::bgfx_target(std::string name, bgfx::TextureFormat::Enum format, uin
 		m_targets = new bgfx::FrameBufferHandle[m_page_count];
 		for (int page = 0; page < m_page_count; page++)
 		{
-			m_textures[page] = bgfx::createTexture2D(m_width, m_height, 1, format, wrap_mode | filter_mode | BGFX_TEXTURE_RT);
+			m_textures[page] = bgfx::createTexture2D(m_width, m_height, false, 1, format, wrap_mode | filter_mode | BGFX_TEXTURE_RT);
 			assert(m_textures[page].idx != 0xffff);
 			m_targets[page] = bgfx::createFrameBuffer(1, &m_textures[page], false);
 			assert(m_targets[page].idx != 0xffff);
@@ -57,6 +57,7 @@ bgfx_target::bgfx_target(void *handle, uint16_t width, uint16_t height)
 	, m_double_buffer(false)
 	, m_style(TARGET_STYLE_CUSTOM)
 	, m_filter(false)
+	, m_scale(0)
 	, m_screen(-1)
 	, m_current_page(0)
 	, m_initialized(true)

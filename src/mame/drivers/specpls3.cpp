@@ -148,15 +148,15 @@ http://www.z88forever.org.uk/zxplus3e/
 
 #include "emu.h"
 #include "includes/spectrum.h"
-#include "imagedev/snapquik.h"
-#include "imagedev/cassette.h"
-#include "sound/ay8910.h"
-#include "sound/speaker.h"
-#include "formats/tzx_cas.h"
+#include "includes/spec128.h"
+#include "includes/specpls3.h"
 
-/* +3 hardware */
-#include "machine/ram.h"
+#include "sound/ay8910.h"
+
+#include "screen.h"
 #include "softlist.h"
+
+#include "formats/tzx_cas.h"
 
 /****************************************************************************************************/
 /* Spectrum + 3 specific functions */
@@ -199,7 +199,7 @@ READ8_MEMBER( spectrum_state::spectrum_plus3_port_2ffd_r )
 void spectrum_state::spectrum_plus3_update_memory()
 {
 	address_space &space = m_maincpu->space(AS_PROGRAM);
-	UINT8 *messram = m_ram->pointer();
+	uint8_t *messram = m_ram->pointer();
 
 	if (m_port_7ffd_data & 8)
 	{
@@ -310,7 +310,7 @@ WRITE8_MEMBER( spectrum_state::spectrum_plus3_port_1ffd_w )
 The function decodes the ports appropriately */
 static ADDRESS_MAP_START (spectrum_plus3_io, AS_IO, 8, spectrum_state )
 	ADDRESS_MAP_UNMAP_HIGH
-	AM_RANGE(0x0000, 0x0000) AM_READWRITE(spectrum_port_fe_r,spectrum_port_fe_w) AM_MIRROR(0xfffe) AM_MASK(0xffff)
+	AM_RANGE(0x0000, 0x0000) AM_READWRITE(spectrum_port_fe_r,spectrum_port_fe_w) AM_SELECT(0xfffe)
 	AM_RANGE(0x001f, 0x001f) AM_READ(spectrum_port_1f_r) AM_MIRROR(0xff00)
 	AM_RANGE(0x4000, 0x4000) AM_WRITE(spectrum_plus3_port_7ffd_w) AM_MIRROR(0x3ffd)
 	AM_RANGE(0x8000, 0x8000) AM_DEVWRITE("ay8912", ay8910_device, data_w) AM_MIRROR(0x3ffd)
@@ -322,7 +322,7 @@ ADDRESS_MAP_END
 
 MACHINE_RESET_MEMBER(spectrum_state,spectrum_plus3)
 {
-	UINT8 *messram = m_ram->pointer();
+	uint8_t *messram = m_ram->pointer();
 	memset(messram,0,128*1024);
 
 	MACHINE_RESET_CALL_MEMBER(spectrum);

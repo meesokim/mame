@@ -68,20 +68,20 @@ Notes:
 TODO:
 - The board has, instead of a watchdog, a timed reset that has to be disabled
   on startup. The disable line is tied to CA2 of VIA2, but I don't see writes
-  to that pin in the log. Missing support in machine/6522via.c?
+  to that pin in the log. Missing support in machine/6522via.cpp?
 - Kaos needs a kludge to avoid a deadlock (see the via_irq() function below).
-  I don't know if this is a shortcoming of the driver or of 6522via.c.
+  I don't know if this is a shortcoming of the driver or of 6522via.cpp.
 - Investigate and document the 8910 dip switches
 - Fix the input ports of Kaos
 
 ****************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6502/m6502.h"
-#include "machine/6532riot.h"
-#include "machine/6522via.h"
-#include "sound/ay8910.h"
 #include "includes/gameplan.h"
+
+#include "cpu/m6502/m6502.h"
+#include "sound/ay8910.h"
+#include "speaker.h"
 
 
 
@@ -168,7 +168,7 @@ WRITE_LINE_MEMBER(gameplan_state::r6532_irq)
 WRITE8_MEMBER(gameplan_state::r6532_soundlatch_w)
 {
 	address_space &progspace = m_maincpu->space(AS_PROGRAM);
-	soundlatch_byte_w(progspace, 0, data);
+	m_soundlatch->write(progspace, 0, data);
 }
 
 
@@ -956,7 +956,7 @@ MACHINE_RESET_MEMBER(gameplan_state,gameplan)
 	m_video_data = 0;
 }
 
-static MACHINE_CONFIG_START( gameplan, gameplan_state )
+static MACHINE_CONFIG_START( gameplan )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, GAMEPLAN_MAIN_CPU_CLOCK)
@@ -978,6 +978,8 @@ static MACHINE_CONFIG_START( gameplan, gameplan_state )
 	/* audio hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("aysnd", AY8910, GAMEPLAN_AY8910_CLOCK)
 	MCFG_AY8910_PORT_A_READ_CB(IOPORT("DSW2"))
 	MCFG_AY8910_PORT_B_READ_CB(IOPORT("DSW3"))
@@ -996,7 +998,7 @@ static MACHINE_CONFIG_START( gameplan, gameplan_state )
 	MCFG_VIA6522_CB2_HANDLER(WRITELINE(gameplan_state, coin_w))
 
 	MCFG_DEVICE_ADD("via6522_2", VIA6522, 0)
-	MCFG_VIA6522_READPB_HANDLER(READ8(driver_device, soundlatch_byte_r))
+	MCFG_VIA6522_READPB_HANDLER(DEVREAD8("soundlatch", generic_latch_8_device, read))
 	MCFG_VIA6522_WRITEPA_HANDLER(WRITE8(gameplan_state, audio_cmd_w))
 	MCFG_VIA6522_CA2_HANDLER(WRITELINE(gameplan_state, audio_trigger_w))
 	MCFG_VIA6522_CB2_HANDLER(WRITELINE(gameplan_state, audio_reset_w))
@@ -1056,6 +1058,21 @@ ROM_START( megatack )
 
 	ROM_REGION( 0x10000, "audiocpu", 0 )
 	ROM_LOAD( "megatsnd.e1",  0xe000, 0x0800, CRC(0c186bdb) SHA1(233af9481a3979971f2d5aa75ec8df4333aa5e0d) )
+ROM_END
+
+ROM_START( megatacka ) // original Centuri PCB
+	ROM_REGION( 0x10000, "maincpu", 0 )
+	ROM_LOAD( "meg-e2.bin",  0xc000, 0x0800, CRC(9664c7b1) SHA1(356e7f5f3b2a9b829fac53e7bf9193278b4de2ed) )
+	ROM_LOAD( "meg-f2.bin",  0xc800, 0x0800, CRC(67c42523) SHA1(f9fc88cdea05a2d0e89e3ba9b545bf3476b37d2d) )
+	ROM_LOAD( "meg-g2.bin",  0xd000, 0x0800, CRC(71f36604) SHA1(043988126343b6224e8e1d6c0dbba6b6b08fe493) )
+	ROM_LOAD( "meg-j2.bin",  0xd800, 0x0800, CRC(4ddcc145) SHA1(3a6d42a58c388eaaf6561351fa98936d98975e0b) )
+	ROM_LOAD( "meg-j1.bin",  0xe000, 0x0800, CRC(911d5d9a) SHA1(92bfe0f69a6e563363df59ebee745d7b3cfc0141) )
+	ROM_LOAD( "meg-g1.bin",  0xe800, 0x0800, CRC(22a51c9b) SHA1(556e09216ed85eaf3870f85515c273c7eb1ab13a) )
+	ROM_LOAD( "meg-f1.bin",  0xf000, 0x0800, CRC(2ffa51ac) SHA1(7c5d8295c5e71a9918a02d203139b024bd3bf8f4) )
+	ROM_LOAD( "meg-e1.bin",  0xf800, 0x0800, CRC(01dbe4ad) SHA1(af72778ae112f24a92fb3007bb456331c3896b50) )
+
+	ROM_REGION( 0x10000, "audiocpu", 0 )
+	ROM_LOAD( "megatsnd.e1",  0xe000, 0x0800, CRC(0c186bdb) SHA1(233af9481a3979971f2d5aa75ec8df4333aa5e0d) ) // missing for this board, using the one from the parent
 ROM_END
 
 ROM_START( challeng )
@@ -1158,11 +1175,12 @@ ROM_END
  *
  *************************************/
 
-GAME( 1980, killcom,  0,        gameplan, killcom, driver_device,  0, ROT0,   "Game Plan (Centuri license)", "Killer Comet", MACHINE_SUPPORTS_SAVE )
-GAME( 1980, megatack, 0,        gameplan, megatack, driver_device, 0, ROT0,   "Game Plan (Centuri license)", "Megatack", MACHINE_SUPPORTS_SAVE )
-GAME( 1981, challeng, 0,        gameplan, challeng, driver_device, 0, ROT0,   "Game Plan (Centuri license)", "Challenger", MACHINE_SUPPORTS_SAVE )
-GAME( 1981, kaos,     0,        gameplan, kaos, driver_device,     0, ROT270, "Game Plan", "Kaos", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, leprechn, 0,        leprechn, leprechn, driver_device, 0, ROT0,   "Tong Electronic", "Leprechaun", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, potogold, leprechn, leprechn, potogold, driver_device, 0, ROT0,   "Tong Electronic (Game Plan license)", "Pot of Gold", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, leprechp, leprechn, leprechn, potogold, driver_device, 0, ROT0,   "Tong Electronic (Pacific Polytechnical license)", "Leprechaun (Pacific)", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, piratetr, 0,        leprechn, piratetr, driver_device, 0, ROT0,   "Tong Electronic", "Pirate Treasure", MACHINE_SUPPORTS_SAVE )
+GAME( 1980, killcom,   0,        gameplan, killcom,  gameplan_state, 0, ROT0,   "Game Plan (Centuri license)",                     "Killer Comet",         MACHINE_SUPPORTS_SAVE )
+GAME( 1980, megatack,  0,        gameplan, megatack, gameplan_state, 0, ROT0,   "Game Plan (Centuri license)",                     "Megatack (set 1)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1980, megatacka, megatack, gameplan, megatack, gameplan_state, 0, ROT0,   "Game Plan (Centuri license)",                     "Megatack (set 2)",     MACHINE_SUPPORTS_SAVE )
+GAME( 1981, challeng,  0,        gameplan, challeng, gameplan_state, 0, ROT0,   "Game Plan (Centuri license)",                     "Challenger",           MACHINE_SUPPORTS_SAVE )
+GAME( 1981, kaos,      0,        gameplan, kaos,     gameplan_state, 0, ROT270, "Game Plan",                                       "Kaos",                 MACHINE_SUPPORTS_SAVE )
+GAME( 1982, leprechn,  0,        leprechn, leprechn, gameplan_state, 0, ROT0,   "Tong Electronic",                                 "Leprechaun",           MACHINE_SUPPORTS_SAVE )
+GAME( 1982, potogold,  leprechn, leprechn, potogold, gameplan_state, 0, ROT0,   "Tong Electronic (Game Plan license)",             "Pot of Gold",          MACHINE_SUPPORTS_SAVE )
+GAME( 1982, leprechp,  leprechn, leprechn, potogold, gameplan_state, 0, ROT0,   "Tong Electronic (Pacific Polytechnical license)", "Leprechaun (Pacific)", MACHINE_SUPPORTS_SAVE )
+GAME( 1982, piratetr,  0,        leprechn, piratetr, gameplan_state, 0, ROT0,   "Tong Electronic",                                 "Pirate Treasure",      MACHINE_SUPPORTS_SAVE )

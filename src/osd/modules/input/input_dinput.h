@@ -2,7 +2,7 @@
 #define INPUT_DINPUT_H_
 
 #include "input_common.h"
-#include "winutil.h"
+#include "modules/lib/osdlib.h"
 
 //============================================================
 //  dinput_device - base directinput device
@@ -11,8 +11,12 @@
 // DirectInput-specific information about a device
 struct dinput_api_state
 {
+#if DIRECTINPUT_VERSION >= 0x0800
+	Microsoft::WRL::ComPtr<IDirectInputDevice8>  device;
+#else
 	Microsoft::WRL::ComPtr<IDirectInputDevice>   device;
 	Microsoft::WRL::ComPtr<IDirectInputDevice2>  device2;
+#endif
 	DIDEVCAPS                                    caps;
 	LPCDIDATAFORMAT                              format;
 };
@@ -23,7 +27,7 @@ public:
 	struct dinput_callback_context
 	{
 		device_enum_interface *     self;
-		void *						state;
+		void *                      state;
 	};
 
 	virtual ~device_enum_interface()
@@ -39,14 +43,24 @@ public:
 	virtual BOOL device_enum_callback(LPCDIDEVICEINSTANCE instance, LPVOID ref) = 0;
 };
 
-typedef lazy_loaded_function_p4<HRESULT, HMODULE, int, IDirectInput **, LPUNKNOWN> pfn_dinput_create;
+// Typedef for dynamically loaded function
+#if DIRECTINPUT_VERSION >= 0x0800
+typedef HRESULT (WINAPI *dinput_create_fn)(HINSTANCE, DWORD, LPDIRECTINPUT8 *, LPUNKNOWN);
+#else
+typedef HRESULT (WINAPI *dinput_create_fn)(HINSTANCE, DWORD, LPDIRECTINPUT *, LPUNKNOWN);
+#endif
 
 class dinput_api_helper
 {
 private:
+#if DIRECTINPUT_VERSION >= 0x0800
+	Microsoft::WRL::ComPtr<IDirectInput8> m_dinput;
+#else
 	Microsoft::WRL::ComPtr<IDirectInput>  m_dinput;
+#endif
 	int                                   m_dinput_version;
-	pfn_dinput_create                     m_pfn_DirectInputCreate;
+	osd::dynamic_module::ptr              m_dinput_dll;
+	dinput_create_fn                      m_dinput_create_prt;
 
 public:
 	dinput_api_helper(int version);
@@ -65,21 +79,25 @@ public:
 		HRESULT result;
 
 		// convert instance name to utf8
-		auto osd_deleter = [](void *ptr) { osd_free(ptr); };
-		auto utf8_instance_name = std::unique_ptr<char, decltype(osd_deleter)>(utf8_from_tstring(instance->tszInstanceName), osd_deleter);
+		std::string utf8_instance_name = osd::text::from_tstring(instance->tszInstanceName);
+
+		// set device id to name + product unique identifier + instance unique identifier
+		std::string utf8_instance_id = utf8_instance_name + " product_" + guid_to_string(instance->guidProduct) + " instance_" + guid_to_string(instance->guidInstance);
 
 		// allocate memory for the device object
-		TDevice* devinfo = module.devicelist()->create_device<TDevice>(machine, utf8_instance_name.get(), module);
+		TDevice* devinfo = module.devicelist()->create_device<TDevice>(machine, utf8_instance_name.c_str(), utf8_instance_id.c_str(), module);
 
 		// attempt to create a device
 		result = m_dinput->CreateDevice(instance->guidInstance, devinfo->dinput.device.GetAddressOf(), nullptr);
 		if (result != DI_OK)
 			goto error;
 
-		// try to get a version 2 device for it
+#if DIRECTINPUT_VERSION < 0x0800
+		// try to get a version 2 device for it so we can use the poll method
 		result = devinfo->dinput.device.CopyTo(IID_IDirectInputDevice2, reinterpret_cast<void**>(devinfo->dinput.device2.GetAddressOf()));
 		if (result != DI_OK)
 			devinfo->dinput.device2 = nullptr;
+#endif
 
 		// get the caps
 		devinfo->dinput.caps.dwSize = sizeof(devinfo->dinput.caps);
@@ -103,7 +121,7 @@ public:
 		}
 
 		// set the cooperative level
-		result = devinfo->dinput.device->SetCooperativeLevel(win_window_list->m_hwnd, cooperative_level);
+		result = devinfo->dinput.device->SetCooperativeLevel(std::static_pointer_cast<win_window_info>(osd_common_t::s_window_list.front())->platform_window(), cooperative_level);
 		if (result != DI_OK)
 			goto error;
 
@@ -115,6 +133,22 @@ public:
 	}
 
 	HRESULT enum_attached_devices(int devclass, device_enum_interface *enumerate_interface, void *state) const;
+
+	static std::string guid_to_string(const GUID& guid)
+	{
+		// Size of a GUID string with dashes plus null terminator
+		char guid_string[37];
+
+		snprintf(
+			guid_string, ARRAY_LENGTH(guid_string),
+			"%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+			guid.Data1, guid.Data2, guid.Data3,
+			guid.Data4[0], guid.Data4[1], guid.Data4[2],
+			guid.Data4[3], guid.Data4[4], guid.Data4[5],
+			guid.Data4[6], guid.Data4[7]);
+
+		return guid_string;
+	}
 };
 
 class dinput_device : public device_info
@@ -122,7 +156,7 @@ class dinput_device : public device_info
 public:
 	dinput_api_state dinput;
 
-	dinput_device(running_machine &machine, const char *name, input_device_class deviceclass, input_module &module);
+	dinput_device(running_machine &machine, const char *name, const char *id, input_device_class deviceclass, input_module &module);
 	virtual ~dinput_device();
 
 protected:
@@ -137,7 +171,7 @@ private:
 public:
 	keyboard_state  keyboard;
 
-	dinput_keyboard_device(running_machine &machine, const char *name, input_module &module);
+	dinput_keyboard_device(running_machine &machine, const char *name, const char *id, input_module &module);
 
 	void poll() override;
 	void reset() override;
@@ -149,7 +183,7 @@ public:
 	mouse_state mouse;
 
 public:
-	dinput_mouse_device(running_machine &machine, const char *name, input_module &module);
+	dinput_mouse_device(running_machine &machine, const char *name, const char *id, input_module &module);
 	void poll() override;
 	void reset() override;
 };
@@ -167,7 +201,7 @@ class dinput_joystick_device : public dinput_device
 public:
 	dinput_joystick_state   joystick;
 public:
-	dinput_joystick_device(running_machine &machine, const char *name, input_module &module);
+	dinput_joystick_device(running_machine &machine, const char *name, const char *id, input_module &module);
 	void reset() override;
 	void poll() override;
 	int configure();

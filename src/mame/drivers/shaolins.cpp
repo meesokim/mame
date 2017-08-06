@@ -9,9 +9,14 @@ driver by Allard van der Bas
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6809/m6809.h"
-#include "sound/sn76496.h"
 #include "includes/shaolins.h"
+
+#include "cpu/m6809/m6809.h"
+#include "machine/watchdog.h"
+#include "sound/sn76496.h"
+#include "screen.h"
+#include "speaker.h"
+
 
 #define MASTER_CLOCK XTAL_18_432MHz
 
@@ -30,7 +35,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(shaolins_state::interrupt)
 static ADDRESS_MAP_START( shaolins_map, AS_PROGRAM, 8, shaolins_state )
 	AM_RANGE(0x0000, 0x0000) AM_WRITE(nmi_w)   /* bit 0 = flip screen, bit 1 = nmi enable, bit 2 = ? */
 														/* bit 3, bit 4 = coin counters */
-	AM_RANGE(0x0100, 0x0100) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x0100, 0x0100) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x0300, 0x0300) AM_DEVWRITE("sn1", sn76489a_device, write) /* trigger chip to read from latch. The program always */
 	AM_RANGE(0x0400, 0x0400) AM_DEVWRITE("sn2", sn76489a_device, write) /* writes the same number as the latch, so we don't */
 															/* bother emulating them. */
@@ -187,12 +192,13 @@ static GFXDECODE_START( shaolins )
 GFXDECODE_END
 
 
-static MACHINE_CONFIG_START( shaolins, shaolins_state )
+static MACHINE_CONFIG_START( shaolins )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6809, MASTER_CLOCK/12)        /* verified on pcb */
 	MCFG_CPU_PROGRAM_MAP(shaolins_map)
 	MCFG_TIMER_DRIVER_ADD_SCANLINE("scantimer", shaolins_state, interrupt, "screen", 0, 1)
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -336,7 +342,7 @@ ROM_START( shaolinb )
 ROM_END
 
 
-/*    YEAR, NAME,     PARENT, MACHINE,  INPUT,    INIT, MONITOR, COMPANY,  FULLNAME,                  FLAGS */
-GAME( 1985, kicker,   0,      shaolins, shaolins, driver_device, 0,    ROT90,  "Konami",  "Kicker",                  MACHINE_SUPPORTS_SAVE )
-GAME( 1985, shaolins, kicker, shaolins, shaolins, driver_device, 0,    ROT90,  "Konami",  "Shao-lin's Road (set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1985, shaolinb, kicker, shaolins, shaolins, driver_device, 0,    ROT90,  "Konami",  "Shao-lin's Road (set 2)", MACHINE_SUPPORTS_SAVE )
+/*    YEAR, NAME,     PARENT, MACHINE,  INPUT,    STATE,          INIT, MONITOR, COMPANY,  FULLNAME,                  FLAGS */
+GAME( 1985, kicker,   0,      shaolins, shaolins, shaolins_state, 0,    ROT90,  "Konami",  "Kicker",                  MACHINE_SUPPORTS_SAVE )
+GAME( 1985, shaolins, kicker, shaolins, shaolins, shaolins_state, 0,    ROT90,  "Konami",  "Shao-lin's Road (set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1985, shaolinb, kicker, shaolins, shaolins, shaolins_state, 0,    ROT90,  "Konami",  "Shao-lin's Road (set 2)", MACHINE_SUPPORTS_SAVE )

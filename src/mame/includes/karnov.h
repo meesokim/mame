@@ -6,8 +6,10 @@
 
 *************************************************************************/
 
+#include "machine/gen_latch.h"
 #include "video/bufsprite.h"
 #include "video/deckarn.h"
+#include "video/decrmc3.h"
 
 class karnov_state : public driver_device
 {
@@ -18,37 +20,38 @@ public:
 		m_audiocpu(*this, "audiocpu"),
 		m_spriteram(*this, "spriteram") ,
 		m_spritegen(*this, "spritegen"),
+		m_gfxdecode(*this, "gfxdecode"),
+		m_palette(*this, "palette"),
+		m_soundlatch(*this, "soundlatch"),
 		m_ram(*this, "ram"),
 		m_videoram(*this, "videoram"),
-		m_pf_data(*this, "pf_data"),
-		m_gfxdecode(*this, "gfxdecode"),
-		m_palette(*this, "palette") { }
+		m_pf_data(*this, "pf_data") { }
 
 	/* devices */
 	required_device<cpu_device> m_maincpu;
 	required_device<cpu_device> m_audiocpu;
 	required_device<buffered_spriteram16_device> m_spriteram;
 	required_device<deco_karnovsprites_device> m_spritegen;
+	required_device<gfxdecode_device> m_gfxdecode;
+	required_device<deco_rmc3_device> m_palette;
+	required_device<generic_latch_8_device> m_soundlatch;
 
 	/* memory pointers */
-	required_shared_ptr<UINT16> m_ram;
-	required_shared_ptr<UINT16> m_videoram;
-	required_shared_ptr<UINT16> m_pf_data;
-
-	required_device<gfxdecode_device> m_gfxdecode;
-	required_device<palette_device> m_palette;
+	required_shared_ptr<uint16_t> m_ram;
+	required_shared_ptr<uint16_t> m_videoram;
+	required_shared_ptr<uint16_t> m_pf_data;
 
 	/* video-related */
 	std::unique_ptr<bitmap_ind16> m_bitmap_f;
 	tilemap_t     *m_fix_tilemap;
 	int         m_flipscreen;
-	UINT16      m_scroll[2];
+	uint16_t      m_scroll[2];
 
 	/* misc */
-	UINT16      m_i8751_return;
-	UINT16      m_i8751_needs_ack;
-	UINT16      m_i8751_coin_pending;
-	UINT16      m_i8751_command_queue;
+	uint16_t      m_i8751_return;
+	uint16_t      m_i8751_needs_ack;
+	uint16_t      m_i8751_coin_pending;
+	uint16_t      m_i8751_command_queue;
 	int         m_i8751_level;  // needed by chelnov
 	int         m_microcontroller_id;
 	int         m_coin_mask;
@@ -67,10 +70,9 @@ public:
 	TILE_GET_INFO_MEMBER(get_fix_tile_info);
 	virtual void machine_start() override;
 	virtual void machine_reset() override;
-	DECLARE_PALETTE_INIT(karnov);
 	DECLARE_VIDEO_START(karnov);
 	DECLARE_VIDEO_START(wndrplnt);
-	UINT32 screen_update_karnov(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_karnov(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 	INTERRUPT_GEN_MEMBER(karnov_interrupt);
 	void karnov_flipscreen_w( int data );
 	void draw_background( bitmap_ind16 &bitmap, const rectangle &cliprect );

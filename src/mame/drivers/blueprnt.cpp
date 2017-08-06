@@ -49,9 +49,15 @@
 
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "sound/ay8910.h"
 #include "includes/blueprnt.h"
+
+#include "cpu/z80/z80.h"
+#include "machine/watchdog.h"
+#include "sound/ay8910.h"
+
+#include "screen.h"
+#include "speaker.h"
+
 
 /*************************************
  *
@@ -79,7 +85,7 @@ READ8_MEMBER(blueprnt_state::grasspin_sh_dipsw_r)
 
 WRITE8_MEMBER(blueprnt_state::blueprnt_sound_command_w)
 {
-	soundlatch_byte_w(space, offset, data);
+	m_soundlatch->write(space, offset, data);
 	m_audiocpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
 
@@ -105,7 +111,7 @@ static ADDRESS_MAP_START( blueprnt_map, AS_PROGRAM, 8, blueprnt_state )
 	AM_RANGE(0xc001, 0xc001) AM_READ_PORT("P2")
 	AM_RANGE(0xc003, 0xc003) AM_READ(blueprnt_sh_dipsw_r)
 	AM_RANGE(0xd000, 0xd000) AM_WRITE(blueprnt_sound_command_w)
-	AM_RANGE(0xe000, 0xe000) AM_READ(watchdog_reset_r) AM_WRITE(blueprnt_flipscreen_w)
+	AM_RANGE(0xe000, 0xe000) AM_DEVREAD("watchdog", watchdog_timer_device, reset_r) AM_WRITE(blueprnt_flipscreen_w)
 	AM_RANGE(0xf000, 0xf3ff) AM_RAM_WRITE(blueprnt_colorram_w) AM_MIRROR(0x400) AM_SHARE("colorram")
 ADDRESS_MAP_END
 
@@ -336,7 +342,7 @@ void blueprnt_state::machine_reset()
 }
 
 
-static MACHINE_CONFIG_START( blueprnt, blueprnt_state )
+static MACHINE_CONFIG_START( blueprnt )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 7000000/2) // 3.5 MHz
@@ -350,6 +356,8 @@ static MACHINE_CONFIG_START( blueprnt, blueprnt_state )
 									// NMIs are caused by the main CPU
 
 	MCFG_QUANTUM_PERFECT_CPU("maincpu")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -368,8 +376,10 @@ static MACHINE_CONFIG_START( blueprnt, blueprnt_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ay1", AY8910, 10000000/2/2/2)
-	MCFG_AY8910_PORT_B_READ_CB(READ8(driver_device, soundlatch_byte_r))
+	MCFG_AY8910_PORT_B_READ_CB(DEVREAD8("soundlatch", generic_latch_8_device, read))
 	MCFG_AY8910_PORT_A_WRITE_CB(WRITE8(blueprnt_state, dipsw_w))
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.25)
 
@@ -488,7 +498,7 @@ ROM_END
  *
  *************************************/
 
-GAME( 1982, blueprnt,  0,        blueprnt, blueprnt, driver_device, 0, ROT270, "Zilec Electronics / Bally Midway", "Blue Print (Midway)", MACHINE_SUPPORTS_SAVE )
-GAME( 1982, blueprntj, blueprnt, blueprnt, blueprnt, driver_device, 0, ROT270, "Zilec Electronics / Jaleco",       "Blue Print (Jaleco)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, saturnzi,  0,        blueprnt, saturn,   driver_device, 0, ROT270, "Zilec Electronics / Jaleco",       "Saturn", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, grasspin,  0,        grasspin, grasspin, driver_device, 0, ROT270, "Zilec Electronics / Jaleco",       "Grasspin", MACHINE_SUPPORTS_SAVE | MACHINE_IMPERFECT_GRAPHICS ) // a few issues with dip reading + video hw, but nothing major
+GAME( 1982, blueprnt,  0,        blueprnt, blueprnt, blueprnt_state, 0, ROT270, "Zilec Electronics / Bally Midway", "Blue Print (Midway)", MACHINE_SUPPORTS_SAVE )
+GAME( 1982, blueprntj, blueprnt, blueprnt, blueprnt, blueprnt_state, 0, ROT270, "Zilec Electronics / Jaleco",       "Blue Print (Jaleco)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, saturnzi,  0,        blueprnt, saturn,   blueprnt_state, 0, ROT270, "Zilec Electronics / Jaleco",       "Saturn", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, grasspin,  0,        grasspin, grasspin, blueprnt_state, 0, ROT270, "Zilec Electronics / Jaleco",       "Grasspin", MACHINE_SUPPORTS_SAVE | MACHINE_IMPERFECT_GRAPHICS ) // a few issues with dip reading + video hw, but nothing major

@@ -11,10 +11,14 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6809/konami.h" /* for the callback and the firq irq definition */
-#include "sound/2151intf.h"
-#include "includes/konamipt.h"
 #include "includes/surpratk.h"
+#include "includes/konamipt.h"
+
+#include "cpu/m6809/konami.h" /* for the callback and the firq irq definition */
+#include "machine/watchdog.h"
+#include "sound/ym2151.h"
+#include "speaker.h"
+
 
 INTERRUPT_GEN_MEMBER(surpratk_state::surpratk_interrupt)
 {
@@ -65,7 +69,7 @@ static ADDRESS_MAP_START( surpratk_map, AS_PROGRAM, 8, surpratk_state )
 	AM_RANGE(0x5f90, 0x5f90) AM_READ_PORT("DSW2")
 	AM_RANGE(0x5fa0, 0x5faf) AM_DEVREADWRITE("k053244", k05324x_device, k053244_r, k053244_w)
 	AM_RANGE(0x5fb0, 0x5fbf) AM_DEVWRITE("k053251", k053251_device, write)
-	AM_RANGE(0x5fc0, 0x5fc0) AM_READ(watchdog_reset_r) AM_WRITE(surpratk_5fc0_w)
+	AM_RANGE(0x5fc0, 0x5fc0) AM_DEVREAD("watchdog", watchdog_timer_device, reset_r) AM_WRITE(surpratk_5fc0_w)
 	AM_RANGE(0x5fd0, 0x5fd1) AM_DEVWRITE("ymsnd", ym2151_device, write)
 	AM_RANGE(0x5fc4, 0x5fc4) AM_WRITE(surpratk_videobank_w)
 	AM_RANGE(0x4000, 0x7fff) AM_DEVREADWRITE("k052109", k052109_device, read, write)
@@ -162,7 +166,7 @@ WRITE8_MEMBER( surpratk_state::banking_callback )
 	membank("bank1")->set_entry(data & 0x1f);
 }
 
-static MACHINE_CONFIG_START( surpratk, surpratk_state )
+static MACHINE_CONFIG_START( surpratk )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", KONAMI, XTAL_24MHz/2/4) /* 053248, the clock input is 12MHz, and internal CPU divider of 4 */
@@ -176,6 +180,8 @@ static MACHINE_CONFIG_START( surpratk, surpratk_state )
 	MCFG_ADDRESS_MAP_BANK_DATABUS_WIDTH(8)
 	MCFG_ADDRESS_MAP_BANK_ADDRBUS_WIDTH(13)
 	MCFG_ADDRESS_MAP_BANK_STRIDE(0x800)
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -265,6 +271,6 @@ ROM_END
 
 ***************************************************************************/
 
-GAME( 1990, suratk,  0,      surpratk, surpratk, driver_device, 0, ROT0, "Konami", "Surprise Attack (World ver. K)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, suratka, suratk, surpratk, surpratk, driver_device, 0, ROT0, "Konami", "Surprise Attack (Asia ver. L)", MACHINE_SUPPORTS_SAVE )
-GAME( 1990, suratkj, suratk, surpratk, surpratk, driver_device, 0, ROT0, "Konami", "Surprise Attack (Japan ver. M)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, suratk,  0,      surpratk, surpratk, surpratk_state, 0, ROT0, "Konami", "Surprise Attack (World ver. K)", MACHINE_SUPPORTS_SAVE )
+GAME( 1990, suratka, suratk, surpratk, surpratk, surpratk_state, 0, ROT0, "Konami", "Surprise Attack (Asia ver. L)",  MACHINE_SUPPORTS_SAVE )
+GAME( 1990, suratkj, suratk, surpratk, surpratk, surpratk_state, 0, ROT0, "Konami", "Surprise Attack (Japan ver. M)", MACHINE_SUPPORTS_SAVE )

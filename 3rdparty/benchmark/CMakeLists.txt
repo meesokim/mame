@@ -3,6 +3,7 @@ project (benchmark)
 
 foreach(p
     CMP0054 # CMake 3.1
+    CMP0056 # export EXE_LINKER_FLAGS to try_run
     )
   if(POLICY ${p})
     cmake_policy(SET ${p} NEW)
@@ -11,6 +12,7 @@ endforeach()
 
 option(BENCHMARK_ENABLE_TESTING "Enable testing of the benchmark library." ON)
 option(BENCHMARK_ENABLE_LTO "Enable link time optimisation of the benchmark library." OFF)
+option(BENCHMARK_USE_LIBCXX "Build and test using libc++ as the standard library." OFF)
 # Make sure we can import out CMake functions
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -33,15 +35,29 @@ include(CXXFeatureCheck)
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
   # Turn compiler warnings up to 11
-  add_cxx_compiler_flag(-W4)
+  string(REGEX REPLACE "[-/]W[1-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
   add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 
   # Link time optimisation
   if (BENCHMARK_ENABLE_LTO)
-    set(CMAKE_CXX_FLAGS_RELEASE "/GL")
-    set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "/LTCG")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "/LTCG")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "/LTCG")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /GL")
+    set(CMAKE_STATIC_LINKER_FLAGS_RELEASE "${CMAKE_STATIC_LINKER_FLAGS_RELEASE} /LTCG")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /LTCG")
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
+
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /GL")
+    string(REGEX REPLACE "[-/]INCREMENTAL" "/INCREMENTAL:NO" CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO}")
+    set(CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+    string(REGEX REPLACE "[-/]INCREMENTAL" "/INCREMENTAL:NO" CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO}")
+    set(CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+    string(REGEX REPLACE "[-/]INCREMENTAL" "/INCREMENTAL:NO" CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO}")
+    set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
+
+    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /GL")
+    set(CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL "${CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL} /LTCG")
+    set(CMAKE_SHARED_LINKER_FLAGS_MINSIZEREL "${CMAKE_SHARED_LINKER_FLAGS_MINSIZEREL} /LTCG")
+    set(CMAKE_EXE_LINKER_FLAGS_MINSIZEREL "${CMAKE_EXE_LINKER_FLAGS_MINSIZEREL} /LTCG")
   endif()
 else()
   # Try and enable C++11. Don't use C++14 because it doesn't work in some
@@ -57,18 +73,21 @@ else()
   add_cxx_compiler_flag(-Wextra)
   add_cxx_compiler_flag(-Wshadow)
   add_cxx_compiler_flag(-Werror RELEASE)
+  add_cxx_compiler_flag(-Werror RELWITHDEBINFO)
+  add_cxx_compiler_flag(-Werror MINSIZEREL)
   add_cxx_compiler_flag(-pedantic)
   add_cxx_compiler_flag(-pedantic-errors)
   add_cxx_compiler_flag(-Wshorten-64-to-32)
   add_cxx_compiler_flag(-Wfloat-equal)
-  add_cxx_compiler_flag(-Wzero-as-null-pointer-constant)
   add_cxx_compiler_flag(-fstrict-aliasing)
+  if (NOT BENCHMARK_USE_LIBCXX)
+    add_cxx_compiler_flag(-Wzero-as-null-pointer-constant)
+  endif()
   if (HAVE_CXX_FLAG_FSTRICT_ALIASING)
     add_cxx_compiler_flag(-Wstrict-aliasing)
   endif()
   add_cxx_compiler_flag(-Wthread-safety)
-  if (HAVE_WTHREAD_SAFETY)
-    add_definitions(-DHAVE_WTHREAD_SAFETY)
+  if (HAVE_CXX_FLAG_WTHREAD_SAFETY)
     cxx_feature_check(THREAD_SAFETY_ATTRIBUTES)
   endif()
 
@@ -109,12 +128,29 @@ else()
   add_cxx_compiler_flag(--coverage COVERAGE)
 endif()
 
+if (BENCHMARK_USE_LIBCXX)
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    add_cxx_compiler_flag(-stdlib=libc++)
+  elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR
+          "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
+    add_cxx_compiler_flag(-nostdinc++)
+    message("libc++ header path must be manually specified using CMAKE_CXX_FLAGS")
+    # Adding -nodefaultlibs directly to CMAKE_<TYPE>_LINKER_FLAGS will break
+    # configuration checks such as 'find_package(Threads)'
+    list(APPEND BENCHMARK_CXX_LINKER_FLAGS -nodefaultlibs)
+    # -lc++ cannot be added directly to CMAKE_<TYPE>_LINKER_FLAGS because
+    # linker flags appear before all linker inputs and -lc++ must appear after.
+    list(APPEND BENCHMARK_CXX_LIBRARIES c++)
+  else()
+    message(FATAL "-DBENCHMARK_USE_LIBCXX:BOOL=ON is not supported for compiler")
+  endif()
+endif(BENCHMARK_USE_LIBCXX)
+
 # C++ feature checks
 cxx_feature_check(STD_REGEX)
 cxx_feature_check(GNU_POSIX_REGEX)
 cxx_feature_check(POSIX_REGEX)
 cxx_feature_check(STEADY_CLOCK)
-
 # Ensure we have pthreads
 find_package(Threads REQUIRED)
 

@@ -29,37 +29,20 @@
 #ifndef NLD_74192_H_
 #define NLD_74192_H_
 
-#include "nl_base.h"
-#include "nld_9316.h"
+#include "../nl_setup.h"
 
-#define TTL_74192(_name)                                              \
-		NET_REGISTER_DEV(TTL_74192, _name)
+#define TTL_74192(name, cA, cB, cC, cD, cCLEAR, cLOADQ, cCU, cCD)               \
+		NET_REGISTER_DEV(TTL_74192, name)   \
+		NET_CONNECT(name, A,     cA)        \
+		NET_CONNECT(name, B,     cB)        \
+		NET_CONNECT(name, C,     cC)        \
+		NET_CONNECT(name, D,     cD)        \
+		NET_CONNECT(name, CLEAR, cCLEAR)    \
+		NET_CONNECT(name, LOADQ, cLOADQ)    \
+		NET_CONNECT(name, CU,    cCU)       \
+		NET_CONNECT(name, CD,    cCD)
 
-#define TTL_74192_DIP(_name)                                                         \
-		NET_REGISTER_DEV(TTL_74192_DIP, _name)
-
-NETLIB_NAMESPACE_DEVICES_START()
-
-NETLIB_DEVICE(74192,
-	ATTR_HOT void update_outputs();
-
-	NETLIB_NAME(9316_subABCD) m_ABCD;
-	logic_input_t m_CLEAR;
-	logic_input_t m_LOADQ;
-	logic_input_t m_CU;
-	logic_input_t m_CD;
-
-	INT8 m_cnt;
-	UINT8 m_last_CU;
-	UINT8 m_last_CD;
-
-	logic_output_t m_Q[4];
-	logic_output_t m_BORROWQ;
-	logic_output_t m_CARRYQ;
-);
-
-NETLIB_DEVICE_DERIVED_PURE(74192_dip, 74192);
-
-NETLIB_NAMESPACE_DEVICES_END()
+#define TTL_74192_DIP(name)                                                     \
+		NET_REGISTER_DEV(TTL_74192_DIP, name)
 
 #endif /* NLD_74192_H_ */

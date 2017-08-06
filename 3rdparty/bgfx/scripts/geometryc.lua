@@ -1,5 +1,5 @@
 --
--- Copyright 2010-2016 Branimir Karadzic. All rights reserved.
+-- Copyright 2010-2017 Branimir Karadzic. All rights reserved.
 -- License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
 --
 
@@ -25,9 +25,18 @@ project "geometryc"
 		path.join(BGFX_DIR, "examples/common/bounds.**"),
 	}
 
+	links {
+		"bx",
+	}
+
+	configuration { "mingw-*" }
+		targetextension ".exe"
+
 	configuration { "osx" }
 		links {
 			"Cocoa.framework",
 		}
+
+	configuration {}
 
 	strip()

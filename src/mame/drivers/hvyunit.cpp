@@ -62,8 +62,11 @@ To Do:
 #include "emu.h"
 #include "cpu/z80/z80.h"
 #include "cpu/mcs51/mcs51.h"
+#include "machine/gen_latch.h"
 #include "sound/2203intf.h"
 #include "video/kan_pand.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 
@@ -85,9 +88,10 @@ public:
 		m_pandora(*this, "pandora"),
 		m_gfxdecode(*this, "gfxdecode"),
 		m_palette(*this, "palette"),
+		m_soundlatch(*this, "soundlatch"),
 		m_videoram(*this, "videoram"),
 		m_colorram(*this, "colorram")
-		{ }
+	{ }
 
 	/* Devices */
 	required_device<cpu_device> m_mastercpu;
@@ -97,22 +101,23 @@ public:
 	required_device<kaneko_pandora_device> m_pandora;
 	required_device<gfxdecode_device> m_gfxdecode;
 	required_device<palette_device> m_palette;
+	required_device<generic_latch_8_device> m_soundlatch;
 
 	/* Video */
-	required_shared_ptr<UINT8> m_videoram;
-	required_shared_ptr<UINT8> m_colorram;
+	required_shared_ptr<uint8_t> m_videoram;
+	required_shared_ptr<uint8_t> m_colorram;
 	tilemap_t       *m_bg_tilemap;
-	UINT16          m_scrollx;
-	UINT16          m_scrolly;
-	UINT16          m_port0_data;
+	uint16_t          m_scrollx;
+	uint16_t          m_scrolly;
+	uint16_t          m_port0_data;
 
 	/* Mermaid */
-	UINT8           m_data_to_mermaid;
-	UINT8           m_data_to_z80;
-	UINT8           m_mermaid_to_z80_full;
-	UINT8           m_z80_to_mermaid_full;
-	UINT8           m_mermaid_int0_l;
-	UINT8           m_mermaid_p[4];
+	uint8_t           m_data_to_mermaid;
+	uint8_t           m_data_to_z80;
+	uint8_t           m_mermaid_to_z80_full;
+	uint8_t           m_z80_to_mermaid_full;
+	uint8_t           m_mermaid_int0_l;
+	uint8_t           m_mermaid_p[4];
 
 	DECLARE_WRITE8_MEMBER(trigger_nmi_on_slave_cpu);
 	DECLARE_WRITE8_MEMBER(master_bankswitch_w);
@@ -142,8 +147,8 @@ public:
 	virtual void machine_reset() override;
 	virtual void video_start() override;
 
-	UINT32 screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
-	void screen_eof(screen_device &screen, bool state);
+	uint32_t screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	DECLARE_WRITE_LINE_MEMBER(screen_vblank);
 
 	TIMER_DEVICE_CALLBACK_MEMBER(scanline);
 };
@@ -194,14 +199,14 @@ TILE_GET_INFO_MEMBER(hvyunit_state::get_bg_tile_info)
 
 void hvyunit_state::video_start()
 {
-	m_bg_tilemap = &machine().tilemap().create(m_gfxdecode, tilemap_get_info_delegate(FUNC(hvyunit_state::get_bg_tile_info),this), TILEMAP_SCAN_ROWS, 16, 16, 32, 32);
+	m_bg_tilemap = &machine().tilemap().create(*m_gfxdecode, tilemap_get_info_delegate(FUNC(hvyunit_state::get_bg_tile_info),this), TILEMAP_SCAN_ROWS, 16, 16, 32, 32);
 
 	save_item(NAME(m_scrollx));
 	save_item(NAME(m_scrolly));
 	save_item(NAME(m_port0_data));
 }
 
-UINT32 hvyunit_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
+uint32_t hvyunit_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect)
 {
 #define SX_POS  96
 #define SY_POS  0
@@ -215,7 +220,7 @@ UINT32 hvyunit_state::screen_update(screen_device &screen, bitmap_ind16 &bitmap,
 	return 0;
 }
 
-void hvyunit_state::screen_eof(screen_device &screen, bool state)
+WRITE_LINE_MEMBER(hvyunit_state::screen_vblank)
 {
 	// rising edge
 	if (state)
@@ -269,7 +274,7 @@ READ8_MEMBER(hvyunit_state::mermaid_status_r)
 
 WRITE8_MEMBER(hvyunit_state::trigger_nmi_on_sound_cpu2)
 {
-	soundlatch_byte_w(space, 0, data);
+	m_soundlatch->write(space, 0, data);
 	m_soundcpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
 
@@ -383,9 +388,9 @@ WRITE8_MEMBER(hvyunit_state::mermaid_p2_w)
 
 READ8_MEMBER(hvyunit_state::mermaid_p3_r)
 {
-	UINT8 dsw = 0;
-	UINT8 dsw1 = ioport("DSW1")->read();
-	UINT8 dsw2 = ioport("DSW2")->read();
+	uint8_t dsw = 0;
+	uint8_t dsw1 = ioport("DSW1")->read();
+	uint8_t dsw2 = ioport("DSW2")->read();
 
 	switch ((m_mermaid_p[0] >> 5) & 3)
 	{
@@ -463,7 +468,7 @@ static ADDRESS_MAP_START( sound_io, AS_IO, 8, hvyunit_state )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
 	AM_RANGE(0x00, 0x00) AM_WRITE(sound_bankswitch_w)
 	AM_RANGE(0x02, 0x03) AM_DEVREADWRITE("ymsnd", ym2203_device, read, write)
-	AM_RANGE(0x04, 0x04) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x04, 0x04) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 
@@ -639,7 +644,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(hvyunit_state::scanline)
  *
  *************************************/
 
-static MACHINE_CONFIG_START( hvyunit, hvyunit_state )
+static MACHINE_CONFIG_START( hvyunit )
 
 	MCFG_CPU_ADD("master", Z80, 6000000)
 	MCFG_CPU_PROGRAM_MAP(master_memory)
@@ -667,7 +672,7 @@ static MACHINE_CONFIG_START( hvyunit, hvyunit_state )
 	MCFG_SCREEN_SIZE(256, 256)
 	MCFG_SCREEN_VISIBLE_AREA(0, 256-1, 16, 240-1)
 	MCFG_SCREEN_UPDATE_DRIVER(hvyunit_state, screen_update)
-	MCFG_SCREEN_VBLANK_DRIVER(hvyunit_state, screen_eof)
+	MCFG_SCREEN_VBLANK_CALLBACK(WRITELINE(hvyunit_state, screen_vblank))
 	MCFG_SCREEN_PALETTE("palette")
 
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", hvyunit)
@@ -679,6 +684,8 @@ static MACHINE_CONFIG_START( hvyunit, hvyunit_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_SOUND_ADD("ymsnd", YM2203, 3000000)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.80)
@@ -808,7 +815,7 @@ ROM_END
  *
  *************************************/
 
-GAME( 1988, hvyunit, 0,        hvyunit, hvyunit, driver_device,  0, ROT0, "Kaneko / Taito", "Heavy Unit (World)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
-GAME( 1988, hvyunitj, hvyunit, hvyunit, hvyunitj, driver_device, 0, ROT0, "Kaneko / Taito", "Heavy Unit (Japan, Newer)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
-GAME( 1988, hvyunitjo,hvyunit, hvyunit, hvyunitj, driver_device, 0, ROT0, "Kaneko / Taito", "Heavy Unit (Japan, Older)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
-GAME( 1988, hvyunitu, hvyunit, hvyunit, hvyunitj, driver_device, 0, ROT0, "Kaneko / Taito", "Heavy Unit -U.S.A. Version- (US)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
+GAME( 1988, hvyunit, 0,        hvyunit, hvyunit,  hvyunit_state, 0, ROT0, "Kaneko / Taito", "Heavy Unit (World)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
+GAME( 1988, hvyunitj, hvyunit, hvyunit, hvyunitj, hvyunit_state, 0, ROT0, "Kaneko / Taito", "Heavy Unit (Japan, Newer)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
+GAME( 1988, hvyunitjo,hvyunit, hvyunit, hvyunitj, hvyunit_state, 0, ROT0, "Kaneko / Taito", "Heavy Unit (Japan, Older)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )
+GAME( 1988, hvyunitu, hvyunit, hvyunit, hvyunitj, hvyunit_state, 0, ROT0, "Kaneko / Taito", "Heavy Unit -U.S.A. Version- (US)", MACHINE_NO_COCKTAIL | MACHINE_SUPPORTS_SAVE )

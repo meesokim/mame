@@ -32,6 +32,7 @@
 
 */
 
+#include "emu.h"
 #include "bus/rs232/rs232.h"
 #include "bus/s100/s100.h"
 #include "cpu/z80/z80.h"
@@ -140,7 +141,7 @@ SLOT_INTERFACE_END
 //  MACHINE_CONFIG( horizon )
 //-------------------------------------------------
 
-static MACHINE_CONFIG_START( horizon, horizon_state )
+static MACHINE_CONFIG_START( horizon )
 	// basic machine hardware
 	MCFG_CPU_ADD(Z80_TAG, Z80, XTAL_4MHz)
 	MCFG_CPU_PROGRAM_MAP(horizon_mem)
@@ -169,7 +170,7 @@ static MACHINE_CONFIG_START( horizon, horizon_state )
 	// S-100
 	MCFG_S100_BUS_ADD()
 	MCFG_S100_RDY_CALLBACK(INPUTLINE(Z80_TAG, Z80_INPUT_LINE_BOGUSWAIT))
-	//MCFG_S100_SLOT_ADD("s100_1", horizon_s100_cards, NULL, NULL) // CPU
+	//MCFG_S100_SLOT_ADD("s100_1", horizon_s100_cards, nullptr, nullptr) // CPU
 	MCFG_S100_SLOT_ADD("s100_2", horizon_s100_cards, nullptr) // RAM
 	MCFG_S100_SLOT_ADD("s100_3", horizon_s100_cards, "mdsad") // MDS
 	MCFG_S100_SLOT_ADD("s100_4", horizon_s100_cards, nullptr) // FPB
@@ -217,6 +218,6 @@ ROM_END
 //  SYSTEM DRIVERS
 //**************************************************************************
 
-//    YEAR  NAME    PARENT  COMPAT  MACHINE INPUT   INIT    COMPANY                             FULLNAME    FLAGS
-COMP( 1976, nshrz,   0,       0,    horizon,   horizon, driver_device, 0,  "North Star Computers", "Horizon (North Star Computers)", MACHINE_NOT_WORKING | MACHINE_NO_SOUND_HW )
-COMP( 1979, vector1,  nshrz, 0,    horizon,   horizon, driver_device, 0,  "Vector Graphic", "Vector 1+ (DD drive)", MACHINE_NOT_WORKING | MACHINE_NO_SOUND_HW )
+//    YEAR  NAME     PARENT  COMPAT  MACHINE  INPUT    STATE          INIT  COMPANY                 FULLNAME                          FLAGS
+COMP( 1976, nshrz,   0,      0,      horizon, horizon, horizon_state, 0,    "North Star Computers", "Horizon (North Star Computers)", MACHINE_NOT_WORKING | MACHINE_NO_SOUND_HW )
+COMP( 1979, vector1, nshrz,  0,      horizon, horizon, horizon_state, 0,    "Vector Graphic",       "Vector 1+ (DD drive)",           MACHINE_NOT_WORKING | MACHINE_NO_SOUND_HW )

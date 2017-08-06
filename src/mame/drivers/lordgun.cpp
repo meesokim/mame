@@ -40,14 +40,14 @@ Notes:
 *************************************************************************************************************/
 
 #include "emu.h"
+#include "includes/lordgun.h"
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/z80/z80.h"
 #include "machine/i8255.h"
-#include "machine/eepromser.h"
 #include "sound/3812intf.h"
-#include "sound/okim6295.h"
 #include "sound/ymf278b.h"
-#include "includes/lordgun.h"
+#include "speaker.h"
 
 
 /***************************************************************************
@@ -83,7 +83,7 @@ READ16_MEMBER(lordgun_state::lordgun_protection_r)
 	{
 		case 0x40/2: // bitswap and xor counter
 		{
-			UINT8 x = m_protection_data;
+			uint8_t x = m_protection_data;
 
 			m_protection_data  = ((( x >> 0) | ( x >> 1)) & 1) << 4;
 			m_protection_data |=  ((~x >> 2) & 1) << 3;
@@ -134,7 +134,7 @@ READ16_MEMBER(lordgun_state::aliencha_protection_r)
 
 		case 0x40/2: // bitswap and xor counter
 		{
-			UINT8 x = m_protection_data;
+			uint8_t x = m_protection_data;
 
 			m_protection_data  = (((x >> 3) ^ (x >> 2)) & 1) << 4;
 			m_protection_data |= (((x >> 2) ^ (x >> 1)) & 1) << 3;
@@ -272,8 +272,8 @@ READ16_MEMBER(lordgun_state::lordgun_gun_1_y_r)
 
 WRITE16_MEMBER(lordgun_state::lordgun_soundlatch_w)
 {
-	if (ACCESSING_BITS_0_7)     soundlatch_byte_w (space, 0, (data >> 0) & 0xff);
-	if (ACCESSING_BITS_8_15)    soundlatch2_byte_w(space, 0, (data >> 8) & 0xff);
+	if (ACCESSING_BITS_0_7)     m_soundlatch->write(space, 0, (data >> 0) & 0xff);
+	if (ACCESSING_BITS_8_15)    m_soundlatch2->write(space, 0, (data >> 8) & 0xff);
 
 	m_soundcpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 }
@@ -337,7 +337,7 @@ static ADDRESS_MAP_START( aliencha_map, AS_PROGRAM, 16, lordgun_state )
 	AM_RANGE(0x50b900, 0x50b9ff) AM_READWRITE(aliencha_protection_r, aliencha_protection_w)
 ADDRESS_MAP_END
 
-static ADDRESS_MAP_START( ymf278_map, AS_0, 8, lordgun_state)
+static ADDRESS_MAP_START( ymf278_map, 0, 8, lordgun_state)
 	AM_RANGE(0x000000, 0x1fffff) AM_ROM
 ADDRESS_MAP_END
 
@@ -354,7 +354,7 @@ ADDRESS_MAP_END
 
 WRITE8_MEMBER(lordgun_state::lordgun_okibank_w)
 {
-	m_oki->set_bank_base((data & 2) ? 0x40000 : 0);
+	m_oki->set_rom_bank((data >> 1) & 1);
 	if (data & ~3)  logerror("%s: unknown okibank bits %02x\n", machine().describe_context(), data);
 //  popmessage("OKI %x", data);
 }
@@ -362,16 +362,16 @@ WRITE8_MEMBER(lordgun_state::lordgun_okibank_w)
 static ADDRESS_MAP_START( lordgun_soundio_map, AS_IO, 8, lordgun_state )
 	AM_RANGE(0x1000, 0x1001) AM_DEVWRITE("ymsnd", ym3812_device, write)
 	AM_RANGE(0x2000, 0x2000) AM_DEVREADWRITE("oki", okim6295_device, read, write)
-	AM_RANGE(0x3000, 0x3000) AM_READ(soundlatch2_byte_r )
-	AM_RANGE(0x4000, 0x4000) AM_READ(soundlatch_byte_r )
+	AM_RANGE(0x3000, 0x3000) AM_DEVREAD("soundlatch2", generic_latch_8_device, read)
+	AM_RANGE(0x4000, 0x4000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x5000, 0x5000) AM_READNOP
 	AM_RANGE(0x6000, 0x6000) AM_WRITE(lordgun_okibank_w )
 ADDRESS_MAP_END
 
 
 static ADDRESS_MAP_START( aliencha_soundio_map, AS_IO, 8, lordgun_state )
-	AM_RANGE(0x3000, 0x3000) AM_READ(soundlatch2_byte_r )
-	AM_RANGE(0x4000, 0x4000) AM_READ(soundlatch_byte_r )
+	AM_RANGE(0x3000, 0x3000) AM_DEVREAD("soundlatch2", generic_latch_8_device, read)
+	AM_RANGE(0x4000, 0x4000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x5000, 0x5000) AM_WRITENOP    // writes 03 then 07 at end of NMI
 	AM_RANGE(0x7000, 0x7000) AM_DEVREAD("ymf", ymf278b_device, read)
 	AM_RANGE(0x7000, 0x7005) AM_DEVWRITE("ymf", ymf278b_device, write)
@@ -632,7 +632,7 @@ void lordgun_state::machine_start()
 	save_item(NAME(m_whitescreen));
 }
 
-static MACHINE_CONFIG_START( lordgun, lordgun_state )
+static MACHINE_CONFIG_START( lordgun )
 	MCFG_CPU_ADD("maincpu", M68000, XTAL_20MHz / 2)
 	MCFG_CPU_PROGRAM_MAP(lordgun_map)
 	MCFG_CPU_VBLANK_INT_DRIVER("screen", lordgun_state,  irq4_line_hold)
@@ -672,16 +672,19 @@ static MACHINE_CONFIG_START( lordgun, lordgun_state )
 	// sound hardware
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch2")
+
 	MCFG_SOUND_ADD("ymsnd", YM3812, XTAL_3_579545MHz)
 	MCFG_YM3812_IRQ_HANDLER(INPUTLINE("soundcpu", 0))
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 
-	MCFG_OKIM6295_ADD("oki", XTAL_20MHz / 20, OKIM6295_PIN7_HIGH)   // ? 5MHz can't be right!
+	MCFG_OKIM6295_ADD("oki", XTAL_20MHz / 20, PIN7_HIGH)   // ? 5MHz can't be right!
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( aliencha, lordgun_state )
+static MACHINE_CONFIG_START( aliencha )
 	MCFG_CPU_ADD("maincpu", M68000, XTAL_20MHz / 2)
 	MCFG_CPU_PROGRAM_MAP(aliencha_map)
 	MCFG_CPU_VBLANK_INT_DRIVER("screen", lordgun_state,  irq4_line_hold)
@@ -721,15 +724,18 @@ static MACHINE_CONFIG_START( aliencha, lordgun_state )
 	// sound hardware
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch2")
+
 	MCFG_SOUND_ADD("ymf", YMF278B, 26000000)            // ? 26MHz matches video (decrease for faster music tempo)
-	MCFG_DEVICE_ADDRESS_MAP(AS_0, ymf278_map)
+	MCFG_DEVICE_ADDRESS_MAP(0, ymf278_map)
 	MCFG_YMF278B_IRQ_HANDLER(INPUTLINE("soundcpu", 0))
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.5)
 
-	MCFG_OKIM6295_ADD("oki", XTAL_20MHz / 20, OKIM6295_PIN7_HIGH)   // ? 5MHz can't be right
+	MCFG_OKIM6295_ADD("oki", XTAL_20MHz / 20, PIN7_HIGH)   // ? 5MHz can't be right
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 
-	MCFG_OKIM6295_ADD("oki2", XTAL_20MHz / 20, OKIM6295_PIN7_HIGH)  // ? 5MHz can't be right
+	MCFG_OKIM6295_ADD("oki2", XTAL_20MHz / 20, PIN7_HIGH)  // ? 5MHz can't be right
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 MACHINE_CONFIG_END
 
@@ -1039,12 +1045,12 @@ ROM_END
 
 DRIVER_INIT_MEMBER(lordgun_state, lordgun)
 {
-	UINT16 *rom = (UINT16 *)memregion("maincpu")->base();
+	uint16_t *rom = (uint16_t *)memregion("maincpu")->base();
 	int rom_size = 0x100000;
 
 	for(int i = 0; i < rom_size/2; i++)
 	{
-		UINT16 x = rom[i];
+		uint16_t x = rom[i];
 
 		if((i & 0x0120) == 0x0100 || (i & 0x0a00) == 0x0800)
 			x ^= 0x0010;
@@ -1074,6 +1080,6 @@ DRIVER_INIT_MEMBER(lordgun_state, aliencha)
 
 ***************************************************************************/
 
-GAME( 1994, lordgun,   0,        lordgun,  lordgun,  lordgun_state, lordgun,  ROT0, "IGS", "Lord of Gun (USA)", MACHINE_IMPERFECT_GRAPHICS | MACHINE_SUPPORTS_SAVE )
-GAME( 1994, aliencha,  0,        aliencha, aliencha, driver_device, 0,        ROT0, "IGS", "Alien Challenge (World)", MACHINE_SUPPORTS_SAVE )
-GAME( 1994, alienchac, aliencha, aliencha, aliencha, driver_device, 0,        ROT0, "IGS", "Alien Challenge (China)", MACHINE_SUPPORTS_SAVE )
+GAME( 1994, lordgun,   0,        lordgun,  lordgun,  lordgun_state, lordgun,  ROT0, "IGS", "Lord of Gun (USA)",       MACHINE_IMPERFECT_GRAPHICS | MACHINE_SUPPORTS_SAVE )
+GAME( 1994, aliencha,  0,        aliencha, aliencha, lordgun_state, 0,        ROT0, "IGS", "Alien Challenge (World)", MACHINE_SUPPORTS_SAVE )
+GAME( 1994, alienchac, aliencha, aliencha, aliencha, lordgun_state, 0,        ROT0, "IGS", "Alien Challenge (China)", MACHINE_SUPPORTS_SAVE )

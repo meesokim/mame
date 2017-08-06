@@ -93,9 +93,12 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6502/m6502.h"
-#include "sound/pokey.h"
 #include "includes/cloud9.h"
+
+#include "cpu/m6502/m6502.h"
+#include "machine/watchdog.h"
+#include "sound/pokey.h"
+#include "speaker.h"
 
 
 #define MASTER_CLOCK          (10000000)
@@ -213,15 +216,27 @@ WRITE8_MEMBER(cloud9_state::irq_ack_w)
 }
 
 
-WRITE8_MEMBER(cloud9_state::cloud9_led_w)
+WRITE_LINE_MEMBER(cloud9_state::led1_w)
 {
-	output().set_led_value(offset, ~data & 0x80);
+	output().set_led_value(0, !state);
 }
 
 
-WRITE8_MEMBER(cloud9_state::cloud9_coin_counter_w)
+WRITE_LINE_MEMBER(cloud9_state::led2_w)
 {
-	machine().bookkeeping().coin_counter_w(offset, data & 0x80);
+	output().set_led_value(1, !state);
+}
+
+
+WRITE_LINE_MEMBER(cloud9_state::coin1_counter_w)
+{
+	machine().bookkeeping().coin_counter_w(0, state);
+}
+
+
+WRITE_LINE_MEMBER(cloud9_state::coin2_counter_w)
+{
+	machine().bookkeeping().coin_counter_w(1, state);
 }
 
 
@@ -266,12 +281,11 @@ static ADDRESS_MAP_START( cloud9_map, AS_PROGRAM, 8, cloud9_state )
 	AM_RANGE(0x0002, 0x0002) AM_READWRITE(cloud9_bitmode_r, cloud9_bitmode_w)
 	AM_RANGE(0x0000, 0x4fff) AM_ROMBANK("bank1") AM_WRITE(cloud9_videoram_w)
 	AM_RANGE(0x5000, 0x53ff) AM_RAM AM_SHARE("spriteram")
-	AM_RANGE(0x5400, 0x547f) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x5400, 0x547f) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x5480, 0x54ff) AM_WRITE(irq_ack_w)
 	AM_RANGE(0x5500, 0x557f) AM_RAM_WRITE(cloud9_paletteram_w) AM_SHARE("paletteram")
-	AM_RANGE(0x5580, 0x5587) AM_MIRROR(0x0078) AM_WRITE(cloud9_video_control_w)
-	AM_RANGE(0x5600, 0x5601) AM_MIRROR(0x0078) AM_WRITE(cloud9_coin_counter_w)
-	AM_RANGE(0x5602, 0x5603) AM_MIRROR(0x0078) AM_WRITE(cloud9_led_w)
+	AM_RANGE(0x5580, 0x5587) AM_MIRROR(0x0078) AM_DEVWRITE("videolatch", ls259_device, write_d7) // video control registers
+	AM_RANGE(0x5600, 0x5607) AM_MIRROR(0x0078) AM_DEVWRITE("outlatch", ls259_device, write_d7)
 	AM_RANGE(0x5680, 0x56ff) AM_WRITE(nvram_store_w)
 	AM_RANGE(0x5700, 0x577f) AM_WRITE(nvram_recall_w)
 	AM_RANGE(0x5800, 0x5800) AM_MIRROR(0x007e) AM_READ_PORT("IN0")
@@ -298,7 +312,7 @@ static INPUT_PORTS_START( cloud9 )
 	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_SERVICE1 )
 	PORT_BIT( 0x20, IP_ACTIVE_LOW, IPT_COIN1 )
 	PORT_BIT( 0x40, IP_ACTIVE_LOW, IPT_COIN2 )
-	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, cloud9_state,get_vblank, NULL)
+	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, cloud9_state,get_vblank, nullptr)
 
 	PORT_START("IN1")
 	PORT_BIT( 0x0f, IP_ACTIVE_LOW, IPT_UNKNOWN )
@@ -339,7 +353,7 @@ static INPUT_PORTS_START( firebeas )
 	PORT_BIT( 0x10, IP_ACTIVE_LOW, IPT_SERVICE1 )
 	PORT_BIT( 0x20, IP_ACTIVE_LOW, IPT_COIN1 )
 	PORT_BIT( 0x40, IP_ACTIVE_LOW, IPT_COIN2 )
-	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, cloud9_state,get_vblank, NULL)
+	PORT_BIT( 0x80, IP_ACTIVE_LOW, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, cloud9_state,get_vblank, nullptr)
 
 	PORT_START("IN1")
 	PORT_BIT( 0x07, IP_ACTIVE_LOW, IPT_UNKNOWN )
@@ -401,13 +415,20 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( cloud9, cloud9_state )
+static MACHINE_CONFIG_START( cloud9 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, MASTER_CLOCK/8)
 	MCFG_CPU_PROGRAM_MAP(cloud9_map)
 
-	MCFG_WATCHDOG_VBLANK_INIT(8)
+	MCFG_DEVICE_ADD("outlatch", LS259, 0)
+	MCFG_ADDRESSABLE_LATCH_Q0_OUT_CB(WRITELINE(cloud9_state, coin1_counter_w))
+	MCFG_ADDRESSABLE_LATCH_Q1_OUT_CB(WRITELINE(cloud9_state, coin2_counter_w))
+	MCFG_ADDRESSABLE_LATCH_Q2_OUT_CB(WRITELINE(cloud9_state, led1_w))
+	MCFG_ADDRESSABLE_LATCH_Q3_OUT_CB(WRITELINE(cloud9_state, led2_w))
+
+	MCFG_WATCHDOG_ADD("watchdog")
+	MCFG_WATCHDOG_VBLANK_INIT("screen", 8)
 
 	MCFG_X2212_ADD_AUTOSAVE("nvram")
 
@@ -422,6 +443,8 @@ static MACHINE_CONFIG_START( cloud9, cloud9_state )
 	MCFG_SCREEN_VISIBLE_AREA(0, 255, 0, 231)
 	MCFG_SCREEN_UPDATE_DRIVER(cloud9_state, screen_update_cloud9)
 	MCFG_SCREEN_PALETTE("palette")
+
+	MCFG_DEVICE_ADD("videolatch", LS259, 0)
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
@@ -494,5 +517,5 @@ ROM_END
  *
  *************************************/
 
-GAME( 1983, cloud9,   0, cloud9, cloud9, driver_device,   0, ROT0, "Atari", "Cloud 9 (prototype)", MACHINE_SUPPORTS_SAVE )
-GAME( 1983, firebeas, 0, cloud9, firebeas, driver_device, 0, ROT0, "Atari", "Firebeast (prototype)", MACHINE_SUPPORTS_SAVE )
+GAME( 1983, cloud9,   0, cloud9, cloud9,   cloud9_state, 0, ROT0, "Atari", "Cloud 9 (prototype)",   MACHINE_SUPPORTS_SAVE )
+GAME( 1983, firebeas, 0, cloud9, firebeas, cloud9_state, 0, ROT0, "Atari", "Firebeast (prototype)", MACHINE_SUPPORTS_SAVE )

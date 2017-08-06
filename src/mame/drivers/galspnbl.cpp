@@ -11,7 +11,7 @@ Notes:
 - to start a 2 or more players game, press the start button multiple times
 - the sprite graphics contain a "(c) Tecmo", and the sprite system is
   indeed similar to other Tecmo games like Ninja Gaiden.
-- Clearly based on Temco's Super Pinball Action (see spbactn.c)
+- Clearly based on Tecmo's Super Pinball Action (see spbactn.c)
 - There seems to be a bug in Hot Pinball's Demo Sounds. If you start the
   game normally you get no demo sounds. However if you select the "Slide
   Show" and run all the way through the game will start with demo sounds.
@@ -38,18 +38,20 @@ Manuals for both games define the controls as 4 push buttons:
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/galspnbl.h"
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/z80/z80.h"
 #include "sound/okim6295.h"
 #include "sound/3812intf.h"
-#include "includes/galspnbl.h"
+#include "speaker.h"
 
 
 WRITE16_MEMBER(galspnbl_state::soundcommand_w)
 {
 	if (ACCESSING_BITS_0_7)
 	{
-		soundlatch_byte_w(space,offset,data & 0xff);
+		m_soundlatch->write(space,offset,data & 0xff);
 		m_audiocpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 	}
 }
@@ -85,7 +87,7 @@ static ADDRESS_MAP_START( audio_map, AS_PROGRAM, 8, galspnbl_state )
 	AM_RANGE(0xf800, 0xf800) AM_DEVREADWRITE("oki", okim6295_device, read, write)
 	AM_RANGE(0xf810, 0xf811) AM_DEVWRITE("ymsnd", ym3812_device, write)
 	AM_RANGE(0xfc00, 0xfc00) AM_NOP /* irq ack ?? */
-	AM_RANGE(0xfc20, 0xfc20) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xfc20, 0xfc20) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 
@@ -210,14 +212,14 @@ void galspnbl_state::machine_start()
 {
 }
 
-static MACHINE_CONFIG_START( galspnbl, galspnbl_state )
+static MACHINE_CONFIG_START( galspnbl )
 
 	/* basic machine hardware */
-	MCFG_CPU_ADD("maincpu", M68000, XTAL_12MHz) /* 12 MHz ??? - Use value from Temco's Super Pinball Action - NEEDS VERIFICATION!! */
+	MCFG_CPU_ADD("maincpu", M68000, XTAL_12MHz) /* 12 MHz ??? - Use value from Tecmo's Super Pinball Action - NEEDS VERIFICATION!! */
 	MCFG_CPU_PROGRAM_MAP(main_map)
 	MCFG_CPU_VBLANK_INT_DRIVER("screen", galspnbl_state,  irq3_line_hold)/* also has vector for 6, but it does nothing */
 
-	MCFG_CPU_ADD("audiocpu", Z80, XTAL_4MHz)    /* 4 MHz ??? - Use value from Temco's Super Pinball Action - NEEDS VERIFICATION!! */
+	MCFG_CPU_ADD("audiocpu", Z80, XTAL_4MHz)    /* 4 MHz ??? - Use value from Tecmo's Super Pinball Action - NEEDS VERIFICATION!! */
 	MCFG_CPU_PROGRAM_MAP(audio_map)
 								/* NMI is caused by the main CPU */
 
@@ -246,11 +248,13 @@ static MACHINE_CONFIG_START( galspnbl, galspnbl_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ymsnd", YM3812, XTAL_4MHz) /* Use value from Super Pinball Action - NEEDS VERIFICATION!! */
 	MCFG_YM3812_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
 
-	MCFG_OKIM6295_ADD("oki", XTAL_4MHz/4, OKIM6295_PIN7_HIGH) /* Use value from Super Pinball Action - clock frequency & pin 7 not verified */
+	MCFG_OKIM6295_ADD("oki", XTAL_4MHz/4, PIN7_HIGH) /* Use value from Super Pinball Action - clock frequency & pin 7 not verified */
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.50)
 MACHINE_CONFIG_END
 
@@ -315,5 +319,5 @@ ROM_START( hotpinbl )
 ROM_END
 
 
-GAME( 1995, hotpinbl, 0, galspnbl, hotpinbl, driver_device, 0, ROT90, "Comad & New Japan System", "Hot Pinball", MACHINE_SUPPORTS_SAVE )
-GAME( 1996, galspnbl, 0, galspnbl, galspnbl, driver_device, 0, ROT90, "Comad", "Gals Pinball", MACHINE_SUPPORTS_SAVE )
+GAME( 1995, hotpinbl, 0, galspnbl, hotpinbl, galspnbl_state, 0, ROT90, "Comad & New Japan System", "Hot Pinball", MACHINE_SUPPORTS_SAVE )
+GAME( 1996, galspnbl, 0, galspnbl, galspnbl, galspnbl_state, 0, ROT90, "Comad", "Gals Pinball", MACHINE_SUPPORTS_SAVE )

@@ -97,14 +97,16 @@ Notes:
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6809/konami.h" /* for the callback and the firq irq definition */
-#include "cpu/z80/z80.h"
-
-#include "machine/eepromser.h"
-#include "sound/2151intf.h"
-#include "sound/k053260.h"
 #include "includes/simpsons.h"
 #include "includes/konamipt.h"
+
+#include "cpu/m6809/konami.h" /* for the callback and the firq irq definition */
+#include "cpu/z80/z80.h"
+#include "machine/eepromser.h"
+#include "machine/watchdog.h"
+#include "sound/ym2151.h"
+#include "sound/k053260.h"
+#include "speaker.h"
 
 
 /***************************************************************************
@@ -128,7 +130,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8, simpsons_state )
 	AM_RANGE(0x1fc4, 0x1fc4) AM_READ(simpsons_sound_interrupt_r)
 	AM_RANGE(0x1fc6, 0x1fc7) AM_DEVREADWRITE("k053260", k053260_device, main_read, main_write)
 	AM_RANGE(0x1fc8, 0x1fc9) AM_DEVREAD("k053246", k053247_device, k053246_r)
-	AM_RANGE(0x1fca, 0x1fca) AM_READ(watchdog_reset_r)
+	AM_RANGE(0x1fca, 0x1fca) AM_DEVREAD("watchdog", watchdog_timer_device, reset_r)
 	AM_RANGE(0x0000, 0x1fff) AM_DEVREADWRITE("k052109", k052109_device, read, write)
 	AM_RANGE(0x2000, 0x3fff) AM_DEVICE("bank2000", address_map_bank_device, amap8)
 	AM_RANGE(0x4000, 0x5fff) AM_RAM
@@ -173,7 +175,7 @@ void simpsons_state::device_timer(emu_timer &timer, device_timer_id id, int para
 			m_maincpu->set_input_line(KONAMI_FIRQ_LINE, HOLD_LINE);
 		break;
 	default:
-		assert_always(FALSE, "Unknown id in simpsons_state::device_timer");
+		assert_always(false, "Unknown id in simpsons_state::device_timer");
 	}
 }
 
@@ -281,7 +283,7 @@ INPUT_PORTS_END
 void simpsons_state::simpsons_objdma(  )
 {
 	int counter, num_inactive;
-	UINT16 *src, *dst;
+	uint16_t *src, *dst;
 
 	m_k053246->k053247_get_ram(&dst);
 
@@ -315,7 +317,7 @@ INTERRUPT_GEN_MEMBER(simpsons_state::simpsons_irq)
 		device.execute().set_input_line(KONAMI_IRQ_LINE, HOLD_LINE);
 }
 
-static MACHINE_CONFIG_START( simpsons, simpsons_state )
+static MACHINE_CONFIG_START( simpsons )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", KONAMI, XTAL_24MHz/2/4) /* 053248, the clock input is 12MHz, and internal CPU divider of 4 */
@@ -341,6 +343,8 @@ static MACHINE_CONFIG_START( simpsons, simpsons_state )
 	MCFG_ADDRESS_MAP_BANK_STRIDE(0x2000)
 
 	MCFG_EEPROM_SERIAL_ER5911_8BIT_ADD("eeprom")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -601,10 +605,10 @@ ROM_END
 ***************************************************************************/
 
 // the region warning, if one exists, is shown after the high-score screen in attract mode
-GAME( 1991, simpsons,    0,        simpsons, simpsons, driver_device, 0, ROT0, "Konami", "The Simpsons (4 Players World, set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, simpsons4pa, simpsons, simpsons, simpsons, driver_device, 0, ROT0, "Konami", "The Simpsons (4 Players World, set 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, simpsons2p,  simpsons, simpsons, simpsn2p, driver_device, 0, ROT0, "Konami", "The Simpsons (2 Players World, set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, simpsons2p2, simpsons, simpsons, simpsons, driver_device, 0, ROT0, "Konami", "The Simpsons (2 Players World, set 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, simpsons2p3, simpsons, simpsons, simpsn2p, driver_device, 0, ROT0, "Konami", "The Simpsons (2 Players World, set 3)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, simpsons2pa, simpsons, simpsons, simpsn2p, driver_device, 0, ROT0, "Konami", "The Simpsons (2 Players Asia)", MACHINE_SUPPORTS_SAVE )
-GAME( 1991, simpsons2pj, simpsons, simpsons, simpsn2p, driver_device, 0, ROT0, "Konami", "The Simpsons (2 Players Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons,    0,        simpsons, simpsons, simpsons_state, 0, ROT0, "Konami", "The Simpsons (4 Players World, set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons4pa, simpsons, simpsons, simpsons, simpsons_state, 0, ROT0, "Konami", "The Simpsons (4 Players World, set 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons2p,  simpsons, simpsons, simpsn2p, simpsons_state, 0, ROT0, "Konami", "The Simpsons (2 Players World, set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons2p2, simpsons, simpsons, simpsons, simpsons_state, 0, ROT0, "Konami", "The Simpsons (2 Players World, set 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons2p3, simpsons, simpsons, simpsn2p, simpsons_state, 0, ROT0, "Konami", "The Simpsons (2 Players World, set 3)", MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons2pa, simpsons, simpsons, simpsn2p, simpsons_state, 0, ROT0, "Konami", "The Simpsons (2 Players Asia)",         MACHINE_SUPPORTS_SAVE )
+GAME( 1991, simpsons2pj, simpsons, simpsons, simpsn2p, simpsons_state, 0, ROT0, "Konami", "The Simpsons (2 Players Japan)",        MACHINE_SUPPORTS_SAVE )

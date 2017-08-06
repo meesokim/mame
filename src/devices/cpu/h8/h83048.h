@@ -19,25 +19,27 @@
 
 ***************************************************************************/
 
-#ifndef __H83048_H__
-#define __H83048_H__
+#ifndef MAME_CPU_H8_H83048_H
+#define MAME_CPU_H8_H83048_H
 
 #include "h8h.h"
 #include "h8_adc.h"
 #include "h8_port.h"
 #include "h8_intc.h"
-#include "h8_sci.h"
 #include "h8_timer16.h"
+#include "h8_sci.h"
+#include "h8_watchdog.h"
 
 class h83048_device : public h8h_device {
 public:
-	h83048_device(const machine_config &mconfig, device_type type, const char *name, const char *tag, device_t *owner, UINT32 clock, const char *shortname, const char *source);
-	h83048_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock);
+	h83048_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	DECLARE_READ8_MEMBER(syscr_r);
 	DECLARE_WRITE8_MEMBER(syscr_w);
 
 protected:
+	h83048_device(const machine_config &mconfig, device_type type, const char *tag, device_t *owner, uint32_t clock, uint32_t start);
+
 	required_device<h8h_intc_device> intc;
 	required_device<h8_adc_device> adc;
 	required_device<h8_port_device> port1;
@@ -59,16 +61,17 @@ protected:
 	required_device<h8h_timer16_channel_device> timer16_4;
 	required_device<h8_sci_device> sci0;
 	required_device<h8_sci_device> sci1;
+	required_device<h8_watchdog_device> watchdog;
 
-	UINT32 ram_start;
-	UINT8 syscr;
+	uint32_t ram_start;
+	uint8_t syscr;
 
 	virtual void update_irq_filter() override;
 	virtual void interrupt_taken() override;
 	virtual int trapa_setup() override;
 	virtual void irq_setup() override;
-	virtual void internal_update(UINT64 current_time) override;
-	virtual machine_config_constructor device_mconfig_additions() const override;
+	virtual void internal_update(uint64_t current_time) override;
+	virtual void device_add_mconfig(machine_config &config) override;
 	DECLARE_ADDRESS_MAP(map, 16);
 
 	virtual void device_start() override;
@@ -78,22 +81,22 @@ protected:
 
 class h83044_device : public h83048_device {
 public:
-	h83044_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock);
+	h83044_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
 class h83045_device : public h83048_device {
 public:
-	h83045_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock);
+	h83045_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
 class h83047_device : public h83048_device {
 public:
-	h83047_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock);
+	h83047_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 };
 
-extern const device_type H83044;
-extern const device_type H83045;
-extern const device_type H83047;
-extern const device_type H83048;
+DECLARE_DEVICE_TYPE(H83044, h83044_device)
+DECLARE_DEVICE_TYPE(H83045, h83045_device)
+DECLARE_DEVICE_TYPE(H83047, h83047_device)
+DECLARE_DEVICE_TYPE(H83048, h83048_device)
 
-#endif
+#endif // MAME_CPU_H8_H83048_H

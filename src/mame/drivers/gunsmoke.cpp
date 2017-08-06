@@ -60,7 +60,7 @@ Stephh's notes (based on the games Z80 code and some tests) :
     You can enter 3 chars for your initials.
   - This is probably a later version of the game because some code
     has been added for the "Lives" Dip Switch that replaces the
-    "Demonstation" one (so demonstration is always OFF).
+    "Demonstration" one (so demonstration is always OFF).
   - Other changes :
       * Year is 1986 instead of 1985.
       * High score is 110000 instead of 100000.
@@ -70,9 +70,14 @@ Stephh's notes (based on the games Z80 code and some tests) :
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "sound/2203intf.h"
 #include "includes/gunsmoke.h"
+
+#include "cpu/z80/z80.h"
+#include "machine/gen_latch.h"
+#include "machine/watchdog.h"
+#include "sound/2203intf.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 /* Read/Write Handlers */
@@ -94,7 +99,7 @@ READ8_MEMBER(gunsmoke_state::gunsmoke_protection_r)
 	    arcade game.  It's hard to tell without pulling the code apart.
 	*/
 
-	static const UINT8 gunsmoke_fixed_data[] = { 0xff, 0x00, 0x00 };
+	static const uint8_t gunsmoke_fixed_data[] = { 0xff, 0x00, 0x00 };
 	return gunsmoke_fixed_data[offset];
 }
 
@@ -109,9 +114,9 @@ static ADDRESS_MAP_START( gunsmoke_map, AS_PROGRAM, 8, gunsmoke_state )
 	AM_RANGE(0xc003, 0xc003) AM_READ_PORT("DSW1")
 	AM_RANGE(0xc004, 0xc004) AM_READ_PORT("DSW2")
 	AM_RANGE(0xc4c9, 0xc4cb) AM_READ(gunsmoke_protection_r)
-	AM_RANGE(0xc800, 0xc800) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0xc800, 0xc800) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0xc804, 0xc804) AM_WRITE(gunsmoke_c804_w)  // ROM bank switch, screen flip
-	AM_RANGE(0xc806, 0xc806) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0xc806, 0xc806) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0xd000, 0xd3ff) AM_RAM_WRITE(gunsmoke_videoram_w) AM_SHARE("videoram")
 	AM_RANGE(0xd400, 0xd7ff) AM_RAM_WRITE(gunsmoke_colorram_w) AM_SHARE("colorram")
 	AM_RANGE(0xd800, 0xd801) AM_RAM AM_SHARE("scrollx")
@@ -124,7 +129,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( sound_map, AS_PROGRAM, 8, gunsmoke_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0xc000, 0xc7ff) AM_RAM
-	AM_RANGE(0xc800, 0xc800) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xc800, 0xc800) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xe000, 0xe001) AM_DEVWRITE("ym1", ym2203_device, write)
 	AM_RANGE(0xe002, 0xe003) AM_DEVWRITE("ym2", ym2203_device, write)
 ADDRESS_MAP_END
@@ -276,7 +281,7 @@ GFXDECODE_END
 
 void gunsmoke_state::machine_start()
 {
-	UINT8 *rombase = memregion("maincpu")->base();
+	uint8_t *rombase = memregion("maincpu")->base();
 
 	membank("bank1")->configure_entries(0, 4, &rombase[0x10000], 0x4000);
 
@@ -294,7 +299,7 @@ void gunsmoke_state::machine_reset()
 	m_sprite3bank = 0;
 }
 
-static MACHINE_CONFIG_START( gunsmoke, gunsmoke_state )
+static MACHINE_CONFIG_START( gunsmoke )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 4000000)   // 4 MHz
@@ -304,6 +309,8 @@ static MACHINE_CONFIG_START( gunsmoke, gunsmoke_state )
 	MCFG_CPU_ADD("audiocpu", Z80, 3000000)  // 3 MHz
 	MCFG_CPU_PROGRAM_MAP(sound_map)
 	MCFG_CPU_PERIODIC_INT_DRIVER(gunsmoke_state, irq0_line_hold,  4*60)
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -322,6 +329,8 @@ static MACHINE_CONFIG_START( gunsmoke, gunsmoke_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_SOUND_ADD("ym1", YM2203, 1500000)
 	MCFG_SOUND_ROUTE(0, "mono", 0.22)
@@ -640,9 +649,9 @@ ROM_END
 
 // this information is not displayed onscreen
 
-GAME( 1985, gunsmoke,   0,        gunsmoke, gunsmoke,   driver_device, 0, ROT270, "Capcom",                   "Gun.Smoke (World, 851115)", MACHINE_SUPPORTS_SAVE ) // GSE_03
-GAME( 1985, gunsmokeb,  gunsmoke, gunsmoke, gunsmoke,   driver_device, 0, ROT270, "bootleg",                  "Gun.Smoke (World, 851115) (bootleg)", MACHINE_SUPPORTS_SAVE ) // based  on above version, warning message patched out
-GAME( 1985, gunsmokej,  gunsmoke, gunsmoke, gunsmoke,   driver_device, 0, ROT270, "Capcom",                   "Gun.Smoke (Japan, 851115)", MACHINE_SUPPORTS_SAVE ) // GSJ_03
-GAME( 1986, gunsmokeu,  gunsmoke, gunsmoke, gunsmokeu,  driver_device, 0, ROT270, "Capcom (Romstar license)", "Gun.Smoke (US, 860408)", MACHINE_SUPPORTS_SAVE ) // GSA_03
-GAME( 1985, gunsmokeua, gunsmoke, gunsmoke, gunsmoke,   driver_device, 0, ROT270, "Capcom (Romstar license)", "Gun.Smoke (US, 851115, set 1)", MACHINE_SUPPORTS_SAVE ) // GSR_03 (03A on the chip)
-GAME( 1986, gunsmokeub, gunsmoke, gunsmoke, gunsmoke,   driver_device, 0, ROT270, "Capcom (Romstar license)", "Gun.Smoke (US, 851115, set 2)", MACHINE_SUPPORTS_SAVE ) // GSR_03
+GAME( 1985, gunsmoke,   0,        gunsmoke, gunsmoke,   gunsmoke_state, 0, ROT270, "Capcom",                   "Gun.Smoke (World, 851115)", MACHINE_SUPPORTS_SAVE ) // GSE_03
+GAME( 1985, gunsmokeb,  gunsmoke, gunsmoke, gunsmoke,   gunsmoke_state, 0, ROT270, "bootleg",                  "Gun.Smoke (World, 851115) (bootleg)", MACHINE_SUPPORTS_SAVE ) // based  on above version, warning message patched out
+GAME( 1985, gunsmokej,  gunsmoke, gunsmoke, gunsmoke,   gunsmoke_state, 0, ROT270, "Capcom",                   "Gun.Smoke (Japan, 851115)", MACHINE_SUPPORTS_SAVE ) // GSJ_03
+GAME( 1986, gunsmokeu,  gunsmoke, gunsmoke, gunsmokeu,  gunsmoke_state, 0, ROT270, "Capcom (Romstar license)", "Gun.Smoke (US, 860408)", MACHINE_SUPPORTS_SAVE ) // GSA_03
+GAME( 1985, gunsmokeua, gunsmoke, gunsmoke, gunsmoke,   gunsmoke_state, 0, ROT270, "Capcom (Romstar license)", "Gun.Smoke (US, 851115, set 1)", MACHINE_SUPPORTS_SAVE ) // GSR_03 (03A on the chip)
+GAME( 1986, gunsmokeub, gunsmoke, gunsmoke, gunsmoke,   gunsmoke_state, 0, ROT270, "Capcom (Romstar license)", "Gun.Smoke (US, 851115, set 2)", MACHINE_SUPPORTS_SAVE ) // GSR_03

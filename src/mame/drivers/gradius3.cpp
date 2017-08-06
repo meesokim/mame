@@ -23,12 +23,17 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/gradius3.h"
+#include "includes/konamipt.h"
 
 #include "cpu/m68000/m68000.h"
 #include "cpu/z80/z80.h"
-#include "sound/2151intf.h"
-#include "includes/konamipt.h"
-#include "includes/gradius3.h"
+#include "machine/gen_latch.h"
+#include "machine/watchdog.h"
+#include "sound/ym2151.h"
+
+#include "speaker.h"
+
 
 READ16_MEMBER(gradius3_state::k052109_halfword_r)
 {
@@ -156,8 +161,8 @@ static ADDRESS_MAP_START( gradius3_map, AS_PROGRAM, 16, gradius3_state )
 	AM_RANGE(0x0d0000, 0x0d0001) AM_READ_PORT("DSW1")
 	AM_RANGE(0x0d0002, 0x0d0003) AM_READ_PORT("DSW2")
 	AM_RANGE(0x0d8000, 0x0d8001) AM_WRITE(cpuB_irqtrigger_w)
-	AM_RANGE(0x0e0000, 0x0e0001) AM_WRITE(watchdog_reset16_w)
-	AM_RANGE(0x0e8000, 0x0e8001) AM_WRITE8(soundlatch_byte_w, 0xff00)
+	AM_RANGE(0x0e0000, 0x0e0001) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
+	AM_RANGE(0x0e8000, 0x0e8001) AM_DEVWRITE8("soundlatch", generic_latch_8_device, write, 0xff00)
 	AM_RANGE(0x0f0000, 0x0f0001) AM_WRITE(sound_irq_w)
 	AM_RANGE(0x100000, 0x103fff) AM_RAM AM_SHARE("share1")
 	AM_RANGE(0x14c000, 0x153fff) AM_READWRITE(k052109_halfword_r, k052109_halfword_w)
@@ -181,7 +186,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( gradius3_s_map, AS_PROGRAM, 8, gradius3_state )
 	AM_RANGE(0x0000, 0xefff) AM_ROM
 	AM_RANGE(0xf000, 0xf000) AM_WRITE(sound_bank_w)             /* 007232 bankswitch */
-	AM_RANGE(0xf010, 0xf010) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xf010, 0xf010) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xf020, 0xf02d) AM_DEVREADWRITE("k007232", k007232_device, read, write)
 	AM_RANGE(0xf030, 0xf031) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0xf800, 0xffff) AM_RAM
@@ -269,7 +274,7 @@ void gradius3_state::machine_reset()
 
 }
 
-static MACHINE_CONFIG_START( gradius3, gradius3_state )
+static MACHINE_CONFIG_START( gradius3 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, XTAL_10MHz)
@@ -286,6 +291,8 @@ static MACHINE_CONFIG_START( gradius3, gradius3_state )
 	MCFG_CPU_PROGRAM_MAP(gradius3_s_map)
 
 	MCFG_QUANTUM_TIME(attotime::from_hz(6000))
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -313,6 +320,8 @@ static MACHINE_CONFIG_START( gradius3, gradius3_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_STEREO("lspeaker", "rspeaker")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_YM2151_ADD("ymsnd", 3579545)
 	MCFG_SOUND_ROUTE(0, "lspeaker", 1.0)
@@ -500,7 +509,7 @@ ROM_END
 
 
 
-GAME( 1989, gradius3,  0,        gradius3, gradius3, driver_device, 0, ROT0, "Konami", "Gradius III (World, program code R)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, gradius3j, gradius3, gradius3, gradius3, driver_device, 0, ROT0, "Konami", "Gradius III (Japan, program code S)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, gradius3js, gradius3, gradius3, gradius3, driver_device, 0, ROT0, "Konami", "Gradius III (Japan, program code S, split)", MACHINE_SUPPORTS_SAVE )
-GAME( 1989, gradius3a, gradius3, gradius3, gradius3, driver_device, 0, ROT0, "Konami", "Gradius III (Asia)", MACHINE_SUPPORTS_SAVE )
+GAME( 1989, gradius3,   0,        gradius3, gradius3, gradius3_state, 0, ROT0, "Konami", "Gradius III (World, program code R)",        MACHINE_SUPPORTS_SAVE )
+GAME( 1989, gradius3j,  gradius3, gradius3, gradius3, gradius3_state, 0, ROT0, "Konami", "Gradius III (Japan, program code S)",        MACHINE_SUPPORTS_SAVE )
+GAME( 1989, gradius3js, gradius3, gradius3, gradius3, gradius3_state, 0, ROT0, "Konami", "Gradius III (Japan, program code S, split)", MACHINE_SUPPORTS_SAVE )
+GAME( 1989, gradius3a,  gradius3, gradius3, gradius3, gradius3_state, 0, ROT0, "Konami", "Gradius III (Asia)",                         MACHINE_SUPPORTS_SAVE )

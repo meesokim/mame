@@ -7,8 +7,12 @@ Atari Sky Raider driver
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6502/m6502.h"
 #include "includes/skyraid.h"
+
+#include "cpu/m6502/m6502.h"
+#include "machine/watchdog.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 
@@ -38,7 +42,7 @@ PALETTE_INIT_MEMBER(skyraid_state, skyraid)
 
 READ8_MEMBER(skyraid_state::skyraid_port_0_r)
 {
-	UINT8 val = ioport("LANGUAGE")->read();
+	uint8_t val = ioport("LANGUAGE")->read();
 
 	if (ioport("STICKY")->read() > m_analog_range)
 		val |= 0x40;
@@ -79,7 +83,7 @@ static ADDRESS_MAP_START( skyraid_map, AS_PROGRAM, 8, skyraid_state )
 	AM_RANGE(0x4000, 0x4000) AM_WRITE(skyraid_scroll_w)
 	AM_RANGE(0x4400, 0x4400) AM_WRITE(skyraid_sound_w)
 	AM_RANGE(0x4800, 0x4800) AM_WRITE(skyraid_range_w)
-	AM_RANGE(0x5000, 0x5000) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x5000, 0x5000) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x5800, 0x5800) AM_WRITE(skyraid_offset_w)
 	AM_RANGE(0x7000, 0x7fff) AM_ROM
 	AM_RANGE(0xf000, 0xffff) AM_ROM
@@ -214,13 +218,15 @@ static GFXDECODE_START( skyraid )
 GFXDECODE_END
 
 
-static MACHINE_CONFIG_START( skyraid, skyraid_state )
+static MACHINE_CONFIG_START( skyraid )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, 12096000 / 12)
 	MCFG_CPU_PROGRAM_MAP(skyraid_map)
 	MCFG_CPU_VBLANK_INT_DRIVER("screen", skyraid_state,  irq0_line_hold)
-	MCFG_WATCHDOG_VBLANK_INIT(4)
+
+	MCFG_WATCHDOG_ADD("watchdog")
+	MCFG_WATCHDOG_VBLANK_INIT("screen", 4)
 
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
@@ -275,4 +281,4 @@ ROM_START( skyraid )
 ROM_END
 
 
-GAME( 1978, skyraid, 0, skyraid, skyraid, driver_device, 0, ORIENTATION_FLIP_Y, "Atari", "Sky Raider", MACHINE_IMPERFECT_COLORS )
+GAME( 1978, skyraid, 0, skyraid, skyraid, skyraid_state, 0, ORIENTATION_FLIP_Y, "Atari", "Sky Raider", MACHINE_IMPERFECT_COLORS )

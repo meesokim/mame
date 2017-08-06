@@ -34,6 +34,14 @@
 
     TODO:
 
+    - starting from MAME 0.151, the Z80 DMA reads 0x08 as the 257th byte to transfer from disk t0s14 thus failing a comparison @ 37cfa, leading to a watchdog reset
+      changing z80dma.cpp:477 to "done = (m_count == 0);" fixes this but isn't the real reason
+    - abcenix boot stuck in a loop @ 37cfa
+    - segment/page RAM addresses are not correctly decoded, "sas/format/format" after abcenix is booted can't find the SASI interface because of this
+        [:mac] ':3f' (08A98) MAC 7e4a2:0004a2 (SEGA 02f SEGD 09 PGA 09c PGD 8000 NONX 1 WP 0)
+            should be
+        [:mac] ':3f' (089A8) MAC 7e4a2:1fe4a2 (SEGA 00f SEGD 0f PGA 0fc PGD 43fc NONX 0 WP 1)
+
     - short/long reset (RSTBUT)
     - CIO
         - optimize timers!
@@ -45,6 +53,7 @@
 
 */
 
+#include "emu.h"
 #include "includes/abc1600.h"
 #include "softlist.h"
 
@@ -94,10 +103,10 @@ enum
 
 READ8_MEMBER( abc1600_state::bus_r )
 {
-	UINT8 data = 0;
+	uint8_t data = 0;
 
 	// card select pulse
-	UINT8 cs = (m_cs7 << 7) | ((offset >> 5) & 0x3f);
+	uint8_t cs = (m_cs7 << 7) | ((offset >> 5) & 0x3f);
 
 	m_bus0i->cs_w(cs);
 	m_bus0x->cs_w(cs);
@@ -236,7 +245,7 @@ READ8_MEMBER( abc1600_state::bus_r )
 
 WRITE8_MEMBER( abc1600_state::bus_w )
 {
-	UINT8 cs = (m_cs7 << 7) | ((offset >> 5) & 0x3f);
+	uint8_t cs = (m_cs7 << 7) | ((offset >> 5) & 0x3f);
 
 	m_bus0i->cs_w(cs);
 	m_bus0x->cs_w(cs);
@@ -471,10 +480,10 @@ static ADDRESS_MAP_START( mac_mem, AS_PROGRAM, 8, abc1600_state )
 	AM_RANGE(0x000000, 0x0fffff) AM_RAM
 	AM_RANGE(0x100000, 0x17ffff) AM_DEVICE(ABC1600_MOVER_TAG, abc1600_mover_device, vram_map)
 	AM_RANGE(0x1fe000, 0x1fefff) AM_READWRITE(bus_r, bus_w)
-	AM_RANGE(0x1ff000, 0x1ff000) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_t, status_r, cmd_w)
-	AM_RANGE(0x1ff002, 0x1ff002) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_t, track_r, track_w)
-	AM_RANGE(0x1ff004, 0x1ff004) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_t, sector_r, sector_w)
-	AM_RANGE(0x1ff006, 0x1ff006) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_t, data_r, data_w)
+	AM_RANGE(0x1ff000, 0x1ff000) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_device, status_r, cmd_w)
+	AM_RANGE(0x1ff002, 0x1ff002) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_device, track_r, track_w)
+	AM_RANGE(0x1ff004, 0x1ff004) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_device, sector_r, sector_w)
+	AM_RANGE(0x1ff006, 0x1ff006) AM_MIRROR(0xf9) AM_DEVREADWRITE(SAB1797_02P_TAG, fd1797_device, data_r, data_w)
 	AM_RANGE(0x1ff100, 0x1ff101) AM_MIRROR(0xfe) AM_DEVICE(ABC1600_MOVER_TAG, abc1600_mover_device, crtc_map)
 	AM_RANGE(0x1ff200, 0x1ff207) AM_MIRROR(0xf8) AM_READWRITE(dart_r, dart_w)
 	AM_RANGE(0x1ff300, 0x1ff300) AM_MIRROR(0xff) AM_DEVREADWRITE(Z8410AB1_0_TAG, z80dma_device, read, write)
@@ -482,7 +491,9 @@ static ADDRESS_MAP_START( mac_mem, AS_PROGRAM, 8, abc1600_state )
 	AM_RANGE(0x1ff500, 0x1ff500) AM_MIRROR(0xff) AM_DEVREADWRITE(Z8410AB1_2_TAG, z80dma_device, read, write)
 	AM_RANGE(0x1ff600, 0x1ff607) AM_MIRROR(0xf8) AM_READWRITE(scc_r, scc_w)
 	AM_RANGE(0x1ff700, 0x1ff707) AM_MIRROR(0xf8) AM_READWRITE(cio_r, cio_w)
-	AM_RANGE(0x1ff800, 0x1ffaff) AM_DEVICE(ABC1600_MOVER_TAG, abc1600_mover_device, io_map)
+	AM_RANGE(0x1ff800, 0x1ff8ff) AM_DEVICE(ABC1600_MOVER_TAG, abc1600_mover_device, iowr0_map)
+	AM_RANGE(0x1ff900, 0x1ff9ff) AM_DEVICE(ABC1600_MOVER_TAG, abc1600_mover_device, iowr1_map)
+	AM_RANGE(0x1ffa00, 0x1ffaff) AM_DEVICE(ABC1600_MOVER_TAG, abc1600_mover_device, iowr2_map)
 	AM_RANGE(0x1ffb00, 0x1ffb00) AM_MIRROR(0x7e) AM_WRITE(fw0_w)
 	AM_RANGE(0x1ffb01, 0x1ffb01) AM_MIRROR(0x7e) AM_WRITE(fw1_w)
 	AM_RANGE(0x1ffd00, 0x1ffd07) AM_MIRROR(0xf8) AM_DEVWRITE(ABC1600_MAC_TAG, abc1600_mac_device, dmamap_w)
@@ -622,7 +633,7 @@ READ8_MEMBER( abc1600_state::cio_pa_r )
 
 	*/
 
-	UINT8 data = 0;
+	uint8_t data = 0;
 
 	data |= m_bus2->irq_r();
 	data |= m_bus1->irq_r() << 1;
@@ -653,7 +664,7 @@ READ8_MEMBER( abc1600_state::cio_pb_r )
 
 	*/
 
-	UINT8 data = 0;
+	uint8_t data = 0;
 
 	data |= !m_sysscc << 5;
 	data |= !m_sysfs << 6;
@@ -701,7 +712,7 @@ READ8_MEMBER( abc1600_state::cio_pc_r )
 
 	*/
 
-	UINT8 data = 0x0d;
+	uint8_t data = 0x0d;
 
 	// data in
 	data |= (m_rtc->dio_r() || m_nvram->do_r()) << 1;
@@ -838,13 +849,11 @@ void abc1600_state::machine_reset()
 //  MACHINE_CONFIG( abc1600 )
 //-------------------------------------------------
 
-static MACHINE_CONFIG_START( abc1600, abc1600_state )
+static MACHINE_CONFIG_START( abc1600 )
 	// basic machine hardware
 	MCFG_CPU_ADD(MC68008P8_TAG, M68008, XTAL_64MHz/8)
 	MCFG_CPU_PROGRAM_MAP(abc1600_mem)
 	MCFG_CPU_IRQ_ACKNOWLEDGE_DRIVER(abc1600_state,abc1600_int_ack)
-
-	MCFG_WATCHDOG_TIME_INIT(attotime::from_msec(1600)) // XTAL_64MHz/8/10/20000/8/8
 
 	// video hardware
 	MCFG_ABC1600_MOVER_ADD()
@@ -894,7 +903,9 @@ static MACHINE_CONFIG_START( abc1600, abc1600_state )
 	MCFG_Z8536_PC_OUT_CALLBACK(WRITE8(abc1600_state, cio_pc_w))
 
 	MCFG_NMC9306_ADD(NMC9306_TAG)
+
 	MCFG_E0516_ADD(E050_C16PC_TAG, XTAL_32_768kHz)
+
 	MCFG_FD1797_ADD(SAB1797_02P_TAG, XTAL_64MHz/64)
 	MCFG_WD_FDC_INTRQ_CALLBACK(DEVWRITELINE(Z8536B1_TAG, z8536_device, pb7_w))
 	MCFG_WD_FDC_DRQ_CALLBACK(WRITELINE(abc1600_state, fdc_drq_w))
@@ -949,12 +960,11 @@ MACHINE_CONFIG_END
 
 ROM_START( abc1600 )
 	ROM_REGION( 0x71c, "plds", 0 )
-	ROM_LOAD( "1020 6490349-01.8b",  0x104, 0x104, CRC(1fa065eb) SHA1(20a95940e39fa98e97e59ea1e548ac2e0c9a3444) ) // expansion bus strobes
-	ROM_LOAD( "1021 6490350-01.5d",  0x208, 0x104, CRC(96f6f44b) SHA1(12d1cd153dcc99d1c4a6c834122f370d49723674) ) // interrupt encoder and ROM/RAM control
-	ROM_LOAD( "1023 6490352-01.11e", 0x410, 0x104, CRC(a2f350ac) SHA1(77e08654a197080fa2111bc3031cd2c7699bf82b) ) // interrupt acknowledge
-	ROM_LOAD( "1024 6490353-01.12e", 0x514, 0x104, CRC(67f1328a) SHA1(b585495fe14a7ae2fbb29f722dca106d59325002) ) // expansion bus timing and control
-	ROM_LOAD( "1025 6490354-01.6e",  0x618, 0x104, CRC(9bda0468) SHA1(ad373995dcc18532274efad76fa80bd13c23df25) ) // DMA transfer
-	//ROM_LOAD( "pal16r4.10c", 0x71c, 0x104, NO_DUMP ) // SCC read/write, mentioned in the preliminary service manual, but not present on the PCB
+	ROM_LOAD( "1020 6490349-01.8b",  0x104, 0x104, CRC(1fa065eb) SHA1(20a95940e39fa98e97e59ea1e548ac2e0c9a3444) ) // PAL16L8A expansion bus strobes
+	ROM_LOAD( "1021 6490350-01.5d",  0x208, 0x104, CRC(96f6f44b) SHA1(12d1cd153dcc99d1c4a6c834122f370d49723674) ) // PAL16L8 interrupt encoder and ROM/RAM control
+	ROM_LOAD( "1023 6490352-01.11e", 0x410, 0x104, CRC(a2f350ac) SHA1(77e08654a197080fa2111bc3031cd2c7699bf82b) ) // PAL16R6 interrupt acknowledge
+	ROM_LOAD( "1024 6490353-01.12e", 0x514, 0x104, CRC(67f1328a) SHA1(b585495fe14a7ae2fbb29f722dca106d59325002) ) // PAL16R4 expansion bus timing and control
+	ROM_LOAD( "1025 6490354-01.6e",  0x618, 0x104, CRC(9bda0468) SHA1(ad373995dcc18532274efad76fa80bd13c23df25) ) // PAL16R4 DMA transfer
 ROM_END
 
 
@@ -963,5 +973,5 @@ ROM_END
 //  SYSTEM DRIVERS
 //**************************************************************************
 
-//    YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT     INIT  COMPANY     FULLNAME     FLAGS
-COMP( 1985, abc1600, 0,      0,      abc1600, abc1600, driver_device, 0,    "Luxor", "ABC 1600", MACHINE_NOT_WORKING )
+//    YEAR  NAME     PARENT  COMPAT  MACHINE  INPUT    STATE          INIT  COMPANY  FULLNAME    FLAGS
+COMP( 1985, abc1600, 0,      0,      abc1600, abc1600, abc1600_state, 0,    "Luxor", "ABC 1600", MACHINE_NOT_WORKING )

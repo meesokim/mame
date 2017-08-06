@@ -23,10 +23,14 @@
 
 
 #include "emu.h"
-#include "cpu/tms34010/tms34010.h"
+#include "includes/midtunit.h"
+
 #include "cpu/adsp2100/adsp2100.h"
 #include "machine/nvram.h"
-#include "includes/midtunit.h"
+#include "machine/watchdog.h"
+
+#include "screen.h"
+#include "speaker.h"
 
 
 #define CPU_CLOCK       (50000000)
@@ -56,7 +60,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16, midtunit_state )
 /*  AM_RANGE(0x01c00060, 0x01c0007f) AM_WRITE(midtunit_cmos_enable_w) */
 	AM_RANGE(0x01d00000, 0x01d0001f) AM_READ(midtunit_sound_state_r)
 	AM_RANGE(0x01d01020, 0x01d0103f) AM_READWRITE(midtunit_sound_r, midtunit_sound_w)
-	AM_RANGE(0x01d81060, 0x01d8107f) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x01d81060, 0x01d8107f) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x01f00000, 0x01f0001f) AM_WRITE(midtunit_control_w)
 	AM_RANGE(0x02000000, 0x07ffffff) AM_READ(midtunit_gfxrom_r) AM_SHARE("gfxrom")
 	AM_RANGE(0x1f800000, 0x1fffffff) AM_ROM AM_REGION("maincpu", 0) /* mirror used by MK */
@@ -586,12 +590,12 @@ INPUT_PORTS_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( tunit_core, midtunit_state )
+static MACHINE_CONFIG_START( tunit_core )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", TMS34010, CPU_CLOCK)
 	MCFG_CPU_PROGRAM_MAP(main_map)
-	MCFG_TMS340X0_HALT_ON_RESET(FALSE) /* halt on reset */
+	MCFG_TMS340X0_HALT_ON_RESET(false) /* halt on reset */
 	MCFG_TMS340X0_PIXEL_CLOCK(PIXEL_CLOCK) /* pixel clock */
 	MCFG_TMS340X0_PIXELS_PER_CLOCK(2) /* pixels per clock */
 	MCFG_TMS340X0_SCANLINE_IND16_CB(midtunit_state, scanline_update)       /* scanline updater (indexed16) */
@@ -600,6 +604,8 @@ static MACHINE_CONFIG_START( tunit_core, midtunit_state )
 
 	MCFG_MACHINE_RESET_OVERRIDE(midtunit_state,midtunit)
 	MCFG_NVRAM_ADD_0FILL("nvram")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_PALETTE_ADD("palette", 32768)
@@ -618,9 +624,9 @@ MACHINE_CONFIG_END
 static MACHINE_CONFIG_DERIVED( tunit_adpcm, tunit_core )
 
 	/* basic machine hardware */
-	MCFG_SPEAKER_STANDARD_MONO("mono")
-	MCFG_WILLIAMS_ADPCM_SOUND_ADD("adpcm")
-	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 1.0)
+	MCFG_SPEAKER_STANDARD_MONO("speaker")
+	MCFG_SOUND_ADD("adpcm", WILLIAMS_ADPCM_SOUND, 0)
+	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "speaker", 1.0)
 MACHINE_CONFIG_END
 
 

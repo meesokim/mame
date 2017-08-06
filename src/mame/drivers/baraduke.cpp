@@ -108,9 +108,13 @@ DIP locations verified for:
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/m6809/m6809.h"
-#include "cpu/m6800/m6800.h"
 #include "includes/baraduke.h"
+
+#include "cpu/m6809/m6809.h"
+#include "cpu/m6800/m6801.h"
+#include "machine/watchdog.h"
+#include "screen.h"
+#include "speaker.h"
 
 
 WRITE8_MEMBER(baraduke_state::inputport_select_w)
@@ -166,7 +170,7 @@ static ADDRESS_MAP_START( baraduke_map, AS_PROGRAM, 8, baraduke_state )
 	AM_RANGE(0x2000, 0x3fff) AM_READWRITE(baraduke_videoram_r,baraduke_videoram_w) AM_SHARE("videoram") /* Video RAM */
 	AM_RANGE(0x4000, 0x43ff) AM_DEVREADWRITE("namco", namco_cus30_device, namcos1_cus30_r, namcos1_cus30_w)       /* PSG device, shared RAM */
 	AM_RANGE(0x4800, 0x4fff) AM_READWRITE(baraduke_textram_r,baraduke_textram_w) AM_SHARE("textram")/* video RAM (text layer) */
-	AM_RANGE(0x8000, 0x8000) AM_WRITE(watchdog_reset_w)         /* watchdog reset */
+	AM_RANGE(0x8000, 0x8000) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w) /* watchdog reset */
 	AM_RANGE(0x8800, 0x8800) AM_WRITE(baraduke_irq_ack_w)       /* irq acknowledge */
 	AM_RANGE(0xb000, 0xb002) AM_WRITE(baraduke_scroll0_w)       /* scroll (layer 0) */
 	AM_RANGE(0xb004, 0xb006) AM_WRITE(baraduke_scroll1_w)       /* scroll (layer 1) */
@@ -366,7 +370,7 @@ GFXDECODE_END
 
 
 
-static MACHINE_CONFIG_START( baraduke, baraduke_state )
+static MACHINE_CONFIG_START( baraduke )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6809, XTAL_49_152MHz/32)
@@ -380,11 +384,13 @@ static MACHINE_CONFIG_START( baraduke, baraduke_state )
 
 	MCFG_QUANTUM_TIME(attotime::from_hz(6000))      /* we need heavy synch */
 
+	MCFG_WATCHDOG_ADD("watchdog")
+
 	/* video hardware */
 	MCFG_SCREEN_ADD("screen", RASTER)
 	MCFG_SCREEN_RAW_PARAMS(XTAL_49_152MHz/8, 384, 0, 36*8, 264, 2*8, 30*8)
 	MCFG_SCREEN_UPDATE_DRIVER(baraduke_state, screen_update_baraduke)
-	MCFG_SCREEN_VBLANK_DRIVER(baraduke_state, screen_eof_baraduke)
+	MCFG_SCREEN_VBLANK_CALLBACK(WRITELINE(baraduke_state, screen_vblank_baraduke))
 	MCFG_SCREEN_PALETTE("palette")
 
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", baraduke)
@@ -520,7 +526,7 @@ ROM_END
 
 DRIVER_INIT_MEMBER(baraduke_state,baraduke)
 {
-	UINT8 *rom;
+	uint8_t *rom;
 	int i;
 
 	/* unpack the third tile ROM */

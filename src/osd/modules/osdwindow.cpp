@@ -6,14 +6,7 @@
 //
 //============================================================
 
-// standard windows headers
-#ifdef OSD_WINDOWS
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <windowsx.h>
-#include <mmsystem.h>
-#endif
-
+#include "emu.h"
 #include "osdwindow.h"
 
 #include "render/drawnone.h"
@@ -21,41 +14,43 @@
 #if (USE_OPENGL)
 #include "render/drawogl.h"
 #endif
-#ifdef OSD_WINDOWS
+#if defined(OSD_WINDOWS)
 #include "render/drawgdi.h"
 #include "render/drawd3d.h"
-#else
+#elif defined(OSD_SDL)
 #include "render/draw13.h"
 #include "render/drawsdl.h"
 #endif
 
-osd_renderer* osd_renderer::make_for_type(int mode, osd_window* window, int extra_flags)
+float osd_window::pixel_aspect() const
+{
+	return monitor()->pixel_aspect();
+}
+
+std::unique_ptr<osd_renderer> osd_renderer::make_for_type(int mode, std::shared_ptr<osd_window> window, int extra_flags)
 {
 	switch(mode)
 	{
-#ifdef OSD_WINDOWS
+#if defined(OSD_WINDOWS) || defined(OSD_UWP)
 		case VIDEO_MODE_NONE:
-			return new renderer_none(window);
+			return std::make_unique<renderer_none>(window);
 #endif
 		case VIDEO_MODE_BGFX:
-			return new renderer_bgfx(window);
+			return std::make_unique<renderer_bgfx>(window);
 #if (USE_OPENGL)
 		case VIDEO_MODE_OPENGL:
-			return new renderer_ogl(window);
+			return std::make_unique<renderer_ogl>(window);
 #endif
-#ifdef OSD_WINDOWS
+#if defined(OSD_WINDOWS)
 		case VIDEO_MODE_GDI:
-			return new renderer_gdi(window);
+			return std::make_unique<renderer_gdi>(window);
 		case VIDEO_MODE_D3D:
-		{
-			osd_renderer *renderer = new renderer_d3d9(window);
-			return renderer;
-		}
-#else
+			return std::make_unique<renderer_d3d9>(window);
+#elif defined(OSD_SDL)
 		case VIDEO_MODE_SDL2ACCEL:
-			return new renderer_sdl2(window, extra_flags);
+			return std::make_unique<renderer_sdl2>(window, extra_flags);
 		case VIDEO_MODE_SOFT:
-			return new renderer_sdl1(window, extra_flags);
+			return std::make_unique<renderer_sdl1>(window, extra_flags);
 #endif
 		default:
 			return nullptr;

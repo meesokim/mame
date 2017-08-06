@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2016 Branimir Karadzic. All rights reserved.
+ * Copyright 2011-2017 Branimir Karadzic. All rights reserved.
  * License: https://github.com/bkaradzic/bgfx#license-bsd-2-clause
  */
 
@@ -118,7 +118,7 @@ class ExampleInstancing : public entry::AppI
 		if (!entry::processEvents(m_width, m_height, m_debug, m_reset) )
 		{
 			// Set view 0 default viewport.
-			bgfx::setViewRect(0, 0, 0, m_width, m_height);
+			bgfx::setViewRect(0, 0, 0, uint16_t(m_width), uint16_t(m_height) );
 
 			// This dummy draw call is here to make sure that view 0 is cleared
 			// if no other draw calls are submitted to view 0.
@@ -174,11 +174,11 @@ class ExampleInstancing : public entry::AppI
 					bx::mtxLookAt(view, eye, at);
 
 					float proj[16];
-					bx::mtxProj(proj, 60.0f, float(m_width)/float(m_height), 0.1f, 100.0f);
+					bx::mtxProj(proj, 60.0f, float(m_width)/float(m_height), 0.1f, 100.0f, bgfx::getCaps()->homogeneousDepth);
 					bgfx::setViewTransform(0, view, proj);
 
 					// Set view 0 default viewport.
-					bgfx::setViewRect(0, 0, 0, m_width, m_height);
+					bgfx::setViewRect(0, 0, 0, uint16_t(m_width), uint16_t(m_height) );
 				}
 
 				const uint16_t instanceStride = 80;
@@ -199,9 +199,9 @@ class ExampleInstancing : public entry::AppI
 							mtx[14] = 0.0f;
 
 							float* color = (float*)&data[64];
-							color[0] = sinf(time+float(xx)/11.0f)*0.5f+0.5f;
-							color[1] = cosf(time+float(yy)/11.0f)*0.5f+0.5f;
-							color[2] = sinf(time*3.0f)*0.5f+0.5f;
+							color[0] = bx::fsin(time+float(xx)/11.0f)*0.5f+0.5f;
+							color[1] = bx::fcos(time+float(yy)/11.0f)*0.5f+0.5f;
+							color[2] = bx::fsin(time*3.0f)*0.5f+0.5f;
 							color[3] = 1.0f;
 
 							data += instanceStride;

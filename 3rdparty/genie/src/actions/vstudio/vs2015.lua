@@ -19,7 +19,7 @@
 		description     = "Generate Microsoft Visual Studio 2015 project files",
 		os              = "windows",
 
-		valid_kinds     = { "ConsoleApp", "WindowedApp", "StaticLib", "SharedLib" },
+		valid_kinds     = { "ConsoleApp", "WindowedApp", "StaticLib", "SharedLib", "Bundle" },
 
 		valid_languages = { "C", "C++", "C#" },
 
@@ -43,7 +43,7 @@
 				premake.generate(prj, "%%.vcxproj.filters", vstudio.vc2010.generate_filters)
 
 				if premake.vstudio.needAppxManifest then
-					premake.generate(prj, "%%.appxmanifest", premake.vs2010_appxmanifest)
+					premake.generate(prj, "%%/Package.appxmanifest", premake.vs2010_appxmanifest)
 				end
 			end
 		end,
@@ -58,6 +58,7 @@
 			targetFramework = "4.5",
 			toolsVersion    = "14.0",
 			windowsTargetPlatformVersion = "8.1",
-			supports64bitEditContinue = true,
+			supports64bitEditContinue    = true,
+			intDirAbsolute  = false,
 		}
 	}

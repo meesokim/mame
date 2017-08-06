@@ -9,12 +9,20 @@
 --
 ----------------------------------------------------------------------------
 
+files {
+	MAME_DIR .. "src/devices/sound/flt_vol.cpp",
+	MAME_DIR .. "src/devices/sound/flt_vol.h",
+	MAME_DIR .. "src/devices/sound/flt_rc.cpp",
+	MAME_DIR .. "src/devices/sound/flt_rc.h",
+	MAME_DIR .. "src/devices/sound/samples.cpp",
+	MAME_DIR .. "src/devices/sound/samples.h",
+}
 
 ---------------------------------------------------
 -- DACs
 --@src/devices/sound/dac.h,SOUNDS["DAC"] = true
 --@src/devices/sound/dmadac.h,SOUNDS["DMADAC"] = true
---@src/devices/sound/speaker.h,SOUNDS["SPEAKER"] = true
+--@src/devices/sound/spkrdev.h,SOUNDS["SPEAKER"] = true
 --@src/devices/sound/beep.h,SOUNDS["BEEP"] = true
 ---------------------------------------------------
 
@@ -34,8 +42,8 @@ end
 
 if (SOUNDS["SPEAKER"]~=null) then
 	files {
-		MAME_DIR .. "src/devices/sound/speaker.cpp",
-		MAME_DIR .. "src/devices/sound/speaker.h",
+		MAME_DIR .. "src/devices/sound/spkrdev.cpp",
+		MAME_DIR .. "src/devices/sound/spkrdev.h",
 	}
 end
 
@@ -73,21 +81,21 @@ if (SOUNDS["DISCRETE"]~=null) then
 		MAME_DIR .. "src/devices/sound/discrete.h",
 		MAME_DIR .. "src/devices/sound/disc_cls.h",
 		MAME_DIR .. "src/devices/sound/disc_dev.h",
-		MAME_DIR .. "src/devices/sound/disc_dev.inc",
+		MAME_DIR .. "src/devices/sound/disc_dev.hxx",
 		MAME_DIR .. "src/devices/sound/disc_flt.h",
-		MAME_DIR .. "src/devices/sound/disc_flt.inc",
-		MAME_DIR .. "src/devices/sound/disc_inp.inc",
+		MAME_DIR .. "src/devices/sound/disc_flt.hxx",
+		MAME_DIR .. "src/devices/sound/disc_inp.hxx",
 		MAME_DIR .. "src/devices/sound/disc_mth.h",
-		MAME_DIR .. "src/devices/sound/disc_mth.inc",
-		MAME_DIR .. "src/devices/sound/disc_sys.inc",
+		MAME_DIR .. "src/devices/sound/disc_mth.hxx",
+		MAME_DIR .. "src/devices/sound/disc_sys.hxx",
 		MAME_DIR .. "src/devices/sound/disc_wav.h",
-		MAME_DIR .. "src/devices/sound/disc_wav.inc",
+		MAME_DIR .. "src/devices/sound/disc_wav.hxx",
 	}
 end
 
 ---------------------------------------------------
 -- AC97
---@src/devices/sound/pic-ac97.h,SOUNDS["AC97"] = true
+--@src/devices/sound/pci-ac97.h,SOUNDS["AC97"] = true
 ---------------------------------------------------
 
 if (SOUNDS["AC97"]~=null) then
@@ -146,13 +154,13 @@ end
 
 ---------------------------------------------------
 -- Amiga audio hardware
---@src/devices/sound/amiga.h,SOUNDS["AMIGA"] = true
+--@src/devices/machine/8364_paula.h,SOUNDS["PAULA_8364"] = true
 ---------------------------------------------------
 
-if (SOUNDS["AMIGA"]~=null) then
+if (SOUNDS["PAULA_8364"]~=null) then
 	files {
-		MAME_DIR .. "src/devices/sound/amiga.cpp",
-		MAME_DIR .. "src/devices/sound/amiga.h",
+		MAME_DIR .. "src/devices/machine/8364_paula.cpp",
+		MAME_DIR .. "src/devices/machine/8364_paula.h",
 	}
 end
 
@@ -524,6 +532,20 @@ end
 
 
 ---------------------------------------------------
+-- MEA8000 Voice Synthesizer
+--@src/devices/sound/mea8000.h,SOUNDS["MEA8000"] = true
+---------------------------------------------------
+
+if (SOUNDS["MEA8000"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/mea8000.cpp",
+		MAME_DIR .. "src/devices/sound/mea8000.h",
+	}
+end
+
+
+
+---------------------------------------------------
 -- MOS 6560VIC
 --@src/devices/sound/mos6560.h,SOUNDS["MOS656X"] = true
 ---------------------------------------------------
@@ -642,9 +664,10 @@ end
 --@src/devices/sound/okim6376.h,SOUNDS["OKIM6376"] = true
 --@src/devices/sound/okim6295.h,SOUNDS["OKIM6295"] = true
 --@src/devices/sound/okim9810.h,SOUNDS["OKIM9810"] = true
+--@src/devices/sound/okiadpcm.h,SOUNDS["OKIADPCM"] = true
 ---------------------------------------------------
 
-if (SOUNDS["OKIM6258"]~=null or SOUNDS["OKIM6295"]~=null or SOUNDS["OKIM9810"]~=null or SOUNDS["I5000_SND"]~=null) then
+if (SOUNDS["OKIM6258"]~=null or SOUNDS["OKIM6295"]~=null or SOUNDS["OKIM9810"]~=null or SOUNDS["I5000_SND"]~=null or SOUNDS["OKIADPCM"]~=null) then
 	files {
 		MAME_DIR .. "src/devices/sound/okiadpcm.cpp",
 		MAME_DIR .. "src/devices/sound/okiadpcm.h",
@@ -732,9 +755,6 @@ if (SOUNDS["QSOUND"]~=null) then
 	files {
 		MAME_DIR .. "src/devices/sound/qsound.cpp",
 		MAME_DIR .. "src/devices/sound/qsound.h",
-		MAME_DIR .. "src/devices/cpu/dsp16/dsp16.cpp",
-		MAME_DIR .. "src/devices/cpu/dsp16/dsp16.h",
-		MAME_DIR .. "src/devices/cpu/dsp16/dsp16dis.cpp",
 	}
 end
 
@@ -1005,7 +1025,7 @@ if (SOUNDS["TMS5110"]~=null) then
 	files {
 		MAME_DIR .. "src/devices/sound/tms5110.cpp",
 		MAME_DIR .. "src/devices/sound/tms5110.h",
-		MAME_DIR .. "src/devices/sound/tms5110r.inc",
+		MAME_DIR .. "src/devices/sound/tms5110r.hxx",
 	}
 end
 
@@ -1017,7 +1037,7 @@ if (SOUNDS["TMS5220"]~=null) then
 	files {
 		MAME_DIR .. "src/devices/sound/tms5220.cpp",
 		MAME_DIR .. "src/devices/sound/tms5220.h",
-		MAME_DIR .. "src/devices/sound/tms5110r.inc",
+		MAME_DIR .. "src/devices/sound/tms5110r.hxx",
 		MAME_DIR .. "src/devices/machine/spchrom.cpp",
 		MAME_DIR .. "src/devices/machine/spchrom.h",
 	}
@@ -1073,7 +1093,7 @@ if (SOUNDS["VLM5030"]~=null) then
 	files {
 		MAME_DIR .. "src/devices/sound/vlm5030.cpp",
 		MAME_DIR .. "src/devices/sound/vlm5030.h",
-		MAME_DIR .. "src/devices/sound/tms5110r.inc",
+		MAME_DIR .. "src/devices/sound/tms5110r.hxx",
 	}
 end
 
@@ -1121,9 +1141,9 @@ end
 
 ---------------------------------------------------
 -- Yamaha FM synthesizers
---@src/devices/sound/2151intf.h,SOUNDS["YM2151"] = true
+--@src/devices/sound/ym2151.h,SOUNDS["YM2151"] = true
 --@src/devices/sound/2203intf.h,SOUNDS["YM2203"] = true
---@src/devices/sound/2413intf.h,SOUNDS["YM2413"] = true
+--@src/devices/sound/ym2413.h,SOUNDS["YM2413"] = true
 --@src/devices/sound/2608intf.h,SOUNDS["YM2608"] = true
 --@src/devices/sound/2610intf.h,SOUNDS["YM2610"] = true
 --@src/devices/sound/2612intf.h,SOUNDS["YM2612"] = true
@@ -1138,8 +1158,6 @@ end
 
 if (SOUNDS["YM2151"]~=null) then
 	files {
-		MAME_DIR .. "src/devices/sound/2151intf.cpp",
-		MAME_DIR .. "src/devices/sound/2151intf.h",
 		MAME_DIR .. "src/devices/sound/ym2151.cpp",
 		MAME_DIR .. "src/devices/sound/ym2151.h",
 	}
@@ -1147,8 +1165,6 @@ end
 
 if (SOUNDS["YM2413"]~=null) then
 	files {
-		MAME_DIR .. "src/devices/sound/2413intf.cpp",
-		MAME_DIR .. "src/devices/sound/2413intf.h",
 		MAME_DIR .. "src/devices/sound/ym2413.cpp",
 		MAME_DIR .. "src/devices/sound/ym2413.h",
 	}
@@ -1333,5 +1349,87 @@ if (SOUNDS["AD1848"]~=null) then
 	files {
 		MAME_DIR .. "src/devices/sound/ad1848.cpp",
 		MAME_DIR .. "src/devices/sound/ad1848.h",
+	}
+end
+
+---------------------------------------------------
+-- UPD1771
+--@src/devices/sound/upd1771.h,SOUNDS["UPD1771"] = true
+---------------------------------------------------
+
+if (SOUNDS["UPD1771"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/upd1771.cpp",
+		MAME_DIR .. "src/devices/sound/upd1771.h",
+	}
+end
+
+---------------------------------------------------
+-- GB_SOUND
+--@src/devices/sound/gb.h,SOUNDS["GB_SOUND"] = true
+---------------------------------------------------
+
+if (SOUNDS["GB_SOUND"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/gb.cpp",
+		MAME_DIR .. "src/devices/sound/gb.h",
+	}
+end
+
+---------------------------------------------------
+-- PCD3311
+--@src/devices/sound/pcd3311.h,SOUNDS["PCD3311"] = true
+---------------------------------------------------
+
+if (SOUNDS["PCD3311"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/pcd3311.cpp",
+		MAME_DIR .. "src/devices/sound/pcd3311.h",
+	}
+end
+
+---------------------------------------------------
+-- Voltage Regulator
+--@src/devices/sound/volt_reg.h,SOUNDS["VOLT_REG"] = true
+---------------------------------------------------
+if (SOUNDS["VOLT_REG"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/volt_reg.cpp",
+		MAME_DIR .. "src/devices/sound/volt_reg.h",
+	}
+end
+
+---------------------------------------------------
+-- DAC-76 COMDAC
+--@src/devices/sound/dac76.h,SOUNDS["DAC76"] = true
+---------------------------------------------------
+if (SOUNDS["DAC76"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/dac76.cpp",
+		MAME_DIR .. "src/devices/sound/dac76.h",
+	}
+end
+
+---------------------------------------------------
+-- MM5837 Noise Generator
+--@src/devices/sound/mm5837.h,MACHINES["MM5837"] = true
+---------------------------------------------------
+
+if (SOUNDS["MM5837"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/mm5837.cpp",
+		MAME_DIR .. "src/devices/sound/mm5837.h",
+	}
+end
+
+---------------------------------------------------
+-- Intelligent Designs DAVE
+--@src/devices/sound/dave.h,MACHINES["DAVE"] = true
+---------------------------------------------------
+
+if (SOUNDS["DAVE"]~=null) then
+	files {
+		MAME_DIR .. "src/devices/sound/dave.cpp",
+		MAME_DIR .. "src/devices/sound/dave.h",
 	}
 end

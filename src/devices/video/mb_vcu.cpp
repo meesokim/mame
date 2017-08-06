@@ -30,7 +30,7 @@ TODO:
 //**************************************************************************
 
 // device type definition
-const device_type MB_VCU = &device_creator<mb_vcu_device>;
+DEFINE_DEVICE_TYPE(MB_VCU, mb_vcu_device, "mb_vcu", "Mazer Blazer custom VCU")
 
 //-------------------------------------------------
 //  static_set_palette_tag: Set the tag of the
@@ -43,12 +43,12 @@ void mb_vcu_device::static_set_palette_tag(device_t &device, const char *tag)
 }
 
 
-static ADDRESS_MAP_START( mb_vcu_vram, AS_0, 8, mb_vcu_device )
+static ADDRESS_MAP_START( mb_vcu_vram, 0, 8, mb_vcu_device )
 	AM_RANGE(0x00000,0x7ffff) AM_RAM // enough for a 256x256x4 x 2 pages of framebuffer with 4 layers (TODO: doubled for simplicity)
 ADDRESS_MAP_END
 
 
-static ADDRESS_MAP_START( mb_vcu_pal_ram, AS_1, 8, mb_vcu_device )
+static ADDRESS_MAP_START( mb_vcu_pal_ram, 1, 8, mb_vcu_device )
 	AM_RANGE(0x0000, 0x00ff) AM_RAM
 	AM_RANGE(0x0200, 0x02ff) AM_RAM
 	AM_RANGE(0x0400, 0x04ff) AM_RAM
@@ -91,14 +91,12 @@ WRITE8_MEMBER( mb_vcu_device::mb_vcu_paletteram_w )
 //  any address spaces owned by this device
 //-------------------------------------------------
 
-const address_space_config *mb_vcu_device::memory_space_config(address_spacenum spacenum) const
+device_memory_interface::space_config_vector mb_vcu_device::memory_space_config() const
 {
-	switch (spacenum)
-	{
-		case AS_0: return &m_videoram_space_config;
-		case AS_1: return &m_paletteram_space_config;
-		default: return nullptr;
-	}
+	return space_config_vector {
+		std::make_pair(0, &m_videoram_space_config),
+		std::make_pair(1, &m_paletteram_space_config)
+	};
 }
 
 //**************************************************************************
@@ -109,36 +107,36 @@ const address_space_config *mb_vcu_device::memory_space_config(address_spacenum 
 //  read_byte - read a byte at the given address
 //-------------------------------------------------
 
-inline UINT8 mb_vcu_device::read_byte(offs_t address)
+inline uint8_t mb_vcu_device::read_byte(offs_t address)
 {
-	return space(AS_0).read_byte(address);
+	return space(0).read_byte(address);
 }
 
 //-------------------------------------------------
 //  write_byte - write a byte at the given address
 //-------------------------------------------------
 
-inline void mb_vcu_device::write_byte(offs_t address, UINT8 data)
+inline void mb_vcu_device::write_byte(offs_t address, uint8_t data)
 {
-	space(AS_0).write_byte(address, data);
+	space(0).write_byte(address, data);
 }
 
 //-------------------------------------------------
 //  read_byte - read a byte at the given i/o
 //-------------------------------------------------
 
-inline UINT8 mb_vcu_device::read_io(offs_t address)
+inline uint8_t mb_vcu_device::read_io(offs_t address)
 {
-	return space(AS_1).read_byte(address);
+	return space(1).read_byte(address);
 }
 
 //-------------------------------------------------
 //  write_byte - write a byte at the given i/o
 //-------------------------------------------------
 
-inline void mb_vcu_device::write_io(offs_t address, UINT8 data)
+inline void mb_vcu_device::write_io(offs_t address, uint8_t data)
 {
-	space(AS_1).write_byte(address, data);
+	space(1).write_byte(address, data);
 }
 
 
@@ -150,14 +148,14 @@ inline void mb_vcu_device::write_io(offs_t address, UINT8 data)
 //  mb_vcu_device - constructor
 //-------------------------------------------------
 
-mb_vcu_device::mb_vcu_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: device_t(mconfig, MB_VCU, "Mazer Blazer custom VCU", tag, owner, clock, "mb_vcu", __FILE__),
-		device_memory_interface(mconfig, *this),
-		device_video_interface(mconfig, *this),
-		m_videoram_space_config("videoram", ENDIANNESS_LITTLE, 8, 19, 0, nullptr, *ADDRESS_MAP_NAME(mb_vcu_vram)),
-		m_paletteram_space_config("palram", ENDIANNESS_LITTLE, 8, 16, 0, nullptr, *ADDRESS_MAP_NAME(mb_vcu_pal_ram)),
-		m_cpu(*this),
-		m_palette(*this)
+mb_vcu_device::mb_vcu_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, MB_VCU, tag, owner, clock)
+	, device_memory_interface(mconfig, *this)
+	, device_video_interface(mconfig, *this)
+	, m_videoram_space_config("videoram", ENDIANNESS_LITTLE, 8, 19, 0, nullptr, *ADDRESS_MAP_NAME(mb_vcu_vram))
+	, m_paletteram_space_config("palram", ENDIANNESS_LITTLE, 8, 16, 0, nullptr, *ADDRESS_MAP_NAME(mb_vcu_pal_ram))
+	, m_cpu(*this, finder_base::DUMMY_TAG)
+	, m_palette(*this, finder_base::DUMMY_TAG)
 {
 }
 
@@ -178,8 +176,8 @@ void mb_vcu_device::device_validity_check(validity_checker &valid) const
 void mb_vcu_device::device_start()
 {
 	// TODO: m_screen_tag
-	m_ram = make_unique_clear<UINT8[]>(0x800);
-	m_palram = make_unique_clear<UINT8[]>(0x100);
+	m_ram = make_unique_clear<uint8_t[]>(0x800);
+	m_palram = make_unique_clear<uint8_t[]>(0x100);
 
 	{
 		static const int resistances_r[2]  = { 4700, 2200 };
@@ -230,7 +228,7 @@ void mb_vcu_device::device_reset()
 //**************************************************************************
 //  READ/WRITE HANDLERS
 //**************************************************************************
-//  UINT8 *pcg = memregion("sub2")->base();
+//  uint8_t *pcg = memregion("sub2")->base();
 
 READ8_MEMBER( mb_vcu_device::read_ram )
 {
@@ -280,10 +278,10 @@ READ8_MEMBER( mb_vcu_device::load_gfx )
 {
 	int xi,yi;
 	int dstx,dsty;
-	UINT8 dot;
+	uint8_t dot;
 	int bits = 0;
-	UINT8 pen = 0;
-	UINT8 cur_layer;
+	uint8_t pen = 0;
+	uint8_t cur_layer;
 
 //  cur_layer = (m_mode & 0x3);
 	cur_layer = 0;
@@ -386,7 +384,7 @@ READ8_MEMBER( mb_vcu_device::load_set_clr )
 {
 	int xi,yi;
 	int dstx,dsty;
-//  UINT8 dot;
+//  uint8_t dot;
 	int bits = 0;
 	if(m_mode == 0x13 || m_mode == 0x03)
 	{
@@ -497,10 +495,10 @@ WRITE8_MEMBER( mb_vcu_device::vbank_w )
 //  update_screen -
 //-------------------------------------------------
 
-UINT32 mb_vcu_device::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+uint32_t mb_vcu_device::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
 	int x,y;
-	UINT8 dot;
+	uint8_t dot;
 
 	bitmap.fill(0x100,cliprect);
 

@@ -6,8 +6,6 @@
 
     Emulation by Bryan McPhail, mish@tendril.co.uk
 
-    Are the colours correct on the scoreboard screen? they look strange
-
 === PCB Info ===
 
   The OSC on the CPU board(DE-0303-3) is 20MHz
@@ -23,12 +21,16 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/stadhero.h"
+
 #include "cpu/m68000/m68000.h"
 #include "cpu/m6502/m6502.h"
 #include "sound/2203intf.h"
 #include "sound/3812intf.h"
 #include "sound/okim6295.h"
-#include "includes/stadhero.h"
+#include "screen.h"
+#include "speaker.h"
+
 
 /******************************************************************************/
 
@@ -39,7 +41,7 @@ WRITE16_MEMBER(stadhero_state::stadhero_control_w)
 		case 4: /* Interrupt ack (VBL - IRQ 5) */
 			break;
 		case 6: /* 6502 sound cpu */
-			soundlatch_byte_w(space, 0, data & 0xff);
+			m_soundlatch->write(space, 0, data & 0xff);
 			m_audiocpu->set_input_line(INPUT_LINE_NMI, PULSE_LINE);
 			break;
 		default:
@@ -72,7 +74,7 @@ static ADDRESS_MAP_START( audio_map, AS_PROGRAM, 8, stadhero_state )
 	AM_RANGE(0x0000, 0x05ff) AM_RAM
 	AM_RANGE(0x0800, 0x0801) AM_DEVWRITE("ym1", ym2203_device, write)
 	AM_RANGE(0x1000, 0x1001) AM_DEVWRITE("ym2", ym3812_device, write)
-	AM_RANGE(0x3000, 0x3000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x3000, 0x3000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0x3800, 0x3800) AM_DEVREADWRITE("oki", okim6295_device, read, write)
 	AM_RANGE(0x8000, 0xffff) AM_ROM
 ADDRESS_MAP_END
@@ -197,7 +199,7 @@ GFXDECODE_END
 
 /******************************************************************************/
 
-static MACHINE_CONFIG_START( stadhero, stadhero_state )
+static MACHINE_CONFIG_START( stadhero )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, XTAL_20MHz/2)
@@ -232,6 +234,8 @@ static MACHINE_CONFIG_START( stadhero, stadhero_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, XTAL_24MHz/16)
 	MCFG_SOUND_ROUTE(0, "mono", 0.95)
 	MCFG_SOUND_ROUTE(1, "mono", 0.95)
@@ -242,7 +246,7 @@ static MACHINE_CONFIG_START( stadhero, stadhero_state )
 	MCFG_YM3812_IRQ_HANDLER(INPUTLINE("audiocpu", M6502_IRQ_LINE))
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.80)
 
-	MCFG_OKIM6295_ADD("oki", XTAL_1_056MHz, OKIM6295_PIN7_HIGH)
+	MCFG_OKIM6295_ADD("oki", XTAL_1_056MHz, PIN7_HIGH)
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.80)
 MACHINE_CONFIG_END
 
@@ -261,8 +265,8 @@ ROM_START( stadhero )
 	ROM_LOAD( "ef09.4j",  0x10000, 0x08000, CRC(2ade874d) SHA1(5c884535214438a4ea79fd262700a346bc12ad81) )
 
 	ROM_REGION( 0x30000, "gfx2", 0 )
-	ROM_LOAD( "ef10.11j", 0x00000, 0x10000, CRC(dca3d599) SHA1(2b97a70065f3065e7fbb54fb53cb120d9e5013b3) )  /* tiles */
-	ROM_LOAD( "ef11.13j", 0x10000, 0x10000, CRC(af563e96) SHA1(c88eaff4a1ea133d708f4511bb1dbc99ef066eed) )
+	ROM_LOAD( "ef11.13j", 0x00000, 0x10000, CRC(af563e96) SHA1(c88eaff4a1ea133d708f4511bb1dbc99ef066eed) )  /* tiles */
+	ROM_LOAD( "ef10.11j", 0x10000, 0x10000, CRC(dca3d599) SHA1(2b97a70065f3065e7fbb54fb53cb120d9e5013b3) )
 	ROM_LOAD( "ef12.14j", 0x20000, 0x10000, CRC(9a1bf51c) SHA1(e733c193b305496878551fc6eefc21587ba75c82) )
 
 	ROM_REGION( 0x80000, "gfx3", 0 )
@@ -284,4 +288,4 @@ ROM_END
 
 /******************************************************************************/
 
-GAME( 1988, stadhero, 0, stadhero, stadhero, driver_device, 0, ROT0, "Data East Corporation", "Stadium Hero (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, stadhero, 0, stadhero, stadhero, stadhero_state, 0, ROT0, "Data East Corporation", "Stadium Hero (Japan)", MACHINE_SUPPORTS_SAVE )

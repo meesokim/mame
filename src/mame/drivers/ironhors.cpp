@@ -9,12 +9,16 @@
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
+#include "includes/ironhors.h"
+#include "includes/konamipt.h"
+
 #include "cpu/m6809/m6809.h"
+#include "cpu/z80/z80.h"
 #include "sound/2203intf.h"
 #include "sound/discrete.h"
-#include "includes/konamipt.h"
-#include "includes/ironhors.h"
+#include "screen.h"
+#include "speaker.h"
+
 
 /*************************************
  *
@@ -65,7 +69,7 @@ static ADDRESS_MAP_START( master_map, AS_PROGRAM, 8, ironhors_state )
 	AM_RANGE(0x0020, 0x003f) AM_RAM AM_SHARE("scroll")
 	AM_RANGE(0x0040, 0x005f) AM_RAM
 	AM_RANGE(0x0060, 0x00df) AM_RAM
-	AM_RANGE(0x0800, 0x0800) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0x0800, 0x0800) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0x0900, 0x0900) AM_READ_PORT("DSW3") AM_WRITE(sh_irqtrigger_w)
 	AM_RANGE(0x0a00, 0x0a00) AM_READ_PORT("DSW2") AM_WRITE(palettebank_w)
 	AM_RANGE(0x0b00, 0x0b00) AM_READ_PORT("DSW1") AM_WRITE(flipscreen_w)
@@ -88,7 +92,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( slave_map, AS_PROGRAM, 8, ironhors_state )
 	AM_RANGE(0x0000, 0x3fff) AM_ROM
 	AM_RANGE(0x4000, 0x43ff) AM_RAM
-	AM_RANGE(0x8000, 0x8000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0x8000, 0x8000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 static ADDRESS_MAP_START( slave_io_map, AS_IO, 8, ironhors_state )
@@ -104,7 +108,7 @@ static ADDRESS_MAP_START( farwest_master_map, AS_PROGRAM, 8, ironhors_state )
 	AM_RANGE(0x31db, 0x31fa) AM_RAM AM_SHARE("scroll")
 	AM_RANGE(0x0040, 0x005f) AM_RAM
 	AM_RANGE(0x0060, 0x00ff) AM_RAM
-	AM_RANGE(0x0800, 0x0800) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0x0800, 0x0800) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0x0900, 0x0900) /*AM_READ_PORT("DSW3") */AM_WRITE(sh_irqtrigger_w)
 	AM_RANGE(0x0a00, 0x0a00) AM_READ_PORT("DSW2") //AM_WRITE(palettebank_w)
 	AM_RANGE(0x0b00, 0x0b00) AM_READ_PORT("DSW1") AM_WRITE(flipscreen_w)
@@ -356,7 +360,7 @@ void ironhors_state::machine_reset()
 	m_spriterambank = 0;
 }
 
-static MACHINE_CONFIG_START( ironhors, ironhors_state )
+static MACHINE_CONFIG_START( ironhors )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6809,18432000/6)        /* 3.072 MHz??? mod by Shingo Suzuki 1999/10/15 */
@@ -384,6 +388,8 @@ static MACHINE_CONFIG_START( ironhors, ironhors_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_SOUND_ADD("ym2203", YM2203, 18432000/6)
 	MCFG_AY8910_PORT_A_WRITE_CB(WRITE8(ironhors_state, filter_w))
@@ -417,7 +423,7 @@ TIMER_DEVICE_CALLBACK_MEMBER(ironhors_state::farwest_irq)
 
 READ8_MEMBER(ironhors_state::farwest_soundlatch_r)
 {
-	return soundlatch_byte_r(m_soundcpu->space(AS_PROGRAM), 0);
+	return m_soundlatch->read(m_soundcpu->space(AS_PROGRAM), 0);
 }
 
 static MACHINE_CONFIG_DERIVED( farwest, ironhors )
@@ -527,6 +533,6 @@ ROM_END
  *
  *************************************/
 
-GAME( 1986, ironhors, 0,        ironhors, ironhors, driver_device, 0, ROT0, "Konami", "Iron Horse", MACHINE_SUPPORTS_SAVE )
-GAME( 1986, dairesya, ironhors, ironhors, dairesya, driver_device, 0, ROT0, "Konami (Kawakusu license)", "Dai Ressya Goutou (Japan)", MACHINE_SUPPORTS_SAVE )
-GAME( 1986, farwest,  ironhors, farwest,  ironhors, driver_device, 0, ROT0, "bootleg?", "Far West", MACHINE_NOT_WORKING | MACHINE_SUPPORTS_SAVE )
+GAME( 1986, ironhors, 0,        ironhors, ironhors, ironhors_state, 0, ROT0, "Konami", "Iron Horse", MACHINE_SUPPORTS_SAVE )
+GAME( 1986, dairesya, ironhors, ironhors, dairesya, ironhors_state, 0, ROT0, "Konami (Kawakusu license)", "Dai Ressya Goutou (Japan)", MACHINE_SUPPORTS_SAVE )
+GAME( 1986, farwest,  ironhors, farwest,  ironhors, ironhors_state, 0, ROT0, "bootleg?", "Far West", MACHINE_NOT_WORKING | MACHINE_SUPPORTS_SAVE )

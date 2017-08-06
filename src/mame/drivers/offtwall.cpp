@@ -20,8 +20,11 @@
 
 
 #include "emu.h"
-#include "cpu/m68000/m68000.h"
 #include "includes/offtwall.h"
+
+#include "cpu/m68000/m68000.h"
+#include "machine/watchdog.h"
+#include "speaker.h"
 
 
 
@@ -129,8 +132,8 @@ READ16_MEMBER(offtwall_state::bankrom_r)
 	    ROM bank area, we need to return the correct value to give the proper checksum */
 	if ((offset == 0x3000 || offset == 0x3001) && space.device().safe_pcbase() > 0x37000)
 	{
-		UINT32 checksum = (space.read_word(0x3fd210) << 16) | space.read_word(0x3fd212);
-		UINT32 us = 0xaaaa5555 - checksum;
+		uint32_t checksum = (space.read_word(0x3fd210) << 16) | space.read_word(0x3fd212);
+		uint32_t us = 0xaaaa5555 - checksum;
 		if (offset == 0x3001)
 			return us & 0xffff;
 		else
@@ -167,7 +170,7 @@ READ16_MEMBER(offtwall_state::spritecache_count_r)
 	/* if this read is coming from $99f8 or $9992, it's in the sprite copy loop */
 	if (prevpc == 0x99f8 || prevpc == 0x9992)
 	{
-		UINT16 *data = &m_spritecache_count[-0x100];
+		uint16_t *data = &m_spritecache_count[-0x100];
 		int oldword = m_spritecache_count[0];
 		int count = oldword >> 8;
 		int i, width = 0;
@@ -246,7 +249,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16, offtwall_state )
 	AM_RANGE(0x260040, 0x260041) AM_DEVWRITE8("jsa", atari_jsa_iii_device, main_command_w, 0x00ff)
 	AM_RANGE(0x260050, 0x260051) AM_WRITE(io_latch_w)
 	AM_RANGE(0x260060, 0x260061) AM_DEVWRITE("eeprom", atari_eeprom_device, unlock_write)
-	AM_RANGE(0x2a0000, 0x2a0001) AM_WRITE(watchdog_reset16_w)
+	AM_RANGE(0x2a0000, 0x2a0001) AM_DEVWRITE("watchdog", watchdog_timer_device, reset16_w)
 	AM_RANGE(0x3e0000, 0x3e0fff) AM_RAM_DEVWRITE("palette", palette_device, write) AM_SHARE("palette")
 	AM_RANGE(0x3effc0, 0x3effff) AM_DEVREADWRITE("vad", atari_vad_device, control_read, control_write)
 	AM_RANGE(0x3f4000, 0x3f5eff) AM_RAM_DEVWRITE("vad", atari_vad_device, playfield_latched_msb_w) AM_SHARE("vad:playfield")
@@ -255,7 +258,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 16, offtwall_state )
 	AM_RANGE(0x3f6000, 0x3f7fff) AM_RAM_DEVWRITE("vad", atari_vad_device, playfield_upper_w) AM_SHARE("vad:playfield_ext")
 	AM_RANGE(0x3f8000, 0x3fcfff) AM_RAM
 	AM_RANGE(0x3fd000, 0x3fd7ff) AM_RAM AM_SHARE("vad:mob")
-	AM_RANGE(0x3fd800, 0x3fffff) AM_RAM
+	AM_RANGE(0x3fd800, 0x3fffff) AM_RAM AM_SHARE("mainram")
 ADDRESS_MAP_END
 
 
@@ -357,7 +360,7 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( offtwall, offtwall_state )
+static MACHINE_CONFIG_START( offtwall )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, ATARI_CLOCK_14MHz/2)
@@ -366,6 +369,8 @@ static MACHINE_CONFIG_START( offtwall, offtwall_state )
 	MCFG_MACHINE_RESET_OVERRIDE(offtwall_state,offtwall)
 
 	MCFG_ATARI_EEPROM_2816_ADD("eeprom")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", offtwall)
@@ -467,18 +472,24 @@ ROM_END
 DRIVER_INIT_MEMBER(offtwall_state,offtwall)
 {
 	/* install son-of-slapstic workarounds */
-	m_spritecache_count = m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fde42, 0x3fde43, read16_delegate(FUNC(offtwall_state::spritecache_count_r),this));
-	m_bankswitch_base = m_maincpu->space(AS_PROGRAM).install_read_handler(0x037ec2, 0x037f39, read16_delegate(FUNC(offtwall_state::bankswitch_r),this));
-	m_unknown_verify_base = m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fdf1e, 0x3fdf1f, read16_delegate(FUNC(offtwall_state::unknown_verify_r),this));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fde42, 0x3fde43, read16_delegate(FUNC(offtwall_state::spritecache_count_r),this));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x037ec2, 0x037f39, read16_delegate(FUNC(offtwall_state::bankswitch_r),this));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fdf1e, 0x3fdf1f, read16_delegate(FUNC(offtwall_state::unknown_verify_r),this));
+	m_spritecache_count = m_mainram + (0x3fde42 - 0x3fd800)/2;
+	m_bankswitch_base = (uint16_t *)(memregion("maincpu")->base() + 0x37ec2);
+	m_unknown_verify_base = m_mainram + (0x3fdf1e - 0x3fd800)/2;
 }
 
 
 DRIVER_INIT_MEMBER(offtwall_state,offtwalc)
 {
 	/* install son-of-slapstic workarounds */
-	m_spritecache_count = m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fde42, 0x3fde43, read16_delegate(FUNC(offtwall_state::spritecache_count_r),this));
-	m_bankswitch_base = m_maincpu->space(AS_PROGRAM).install_read_handler(0x037eca, 0x037f43, read16_delegate(FUNC(offtwall_state::bankswitch_r),this));
-	m_unknown_verify_base = m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fdf24, 0x3fdf25, read16_delegate(FUNC(offtwall_state::unknown_verify_r),this));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fde42, 0x3fde43, read16_delegate(FUNC(offtwall_state::spritecache_count_r),this));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x037eca, 0x037f43, read16_delegate(FUNC(offtwall_state::bankswitch_r),this));
+	m_maincpu->space(AS_PROGRAM).install_read_handler(0x3fdf24, 0x3fdf25, read16_delegate(FUNC(offtwall_state::unknown_verify_r),this));
+	m_spritecache_count = m_mainram + (0x3fde42 - 0x3fd800)/2;
+	m_bankswitch_base = (uint16_t *)(memregion("maincpu")->base() + 0x37eca);
+	m_unknown_verify_base = m_mainram + (0x3fdf24 - 0x3fd800)/2;
 }
 
 

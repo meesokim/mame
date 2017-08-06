@@ -825,6 +825,21 @@ void ir_print_glsl_visitor::visit(ir_texture *ir)
 	glsl_sampler_dim sampler_dim = (glsl_sampler_dim)ir->sampler->type->sampler_dimensionality;
 	const bool is_shadow = ir->sampler->type->sampler_shadow;
 	const bool is_array = ir->sampler->type->sampler_array;
+	const bool is_msaa = ir->op == ir_txf_ms;
+
+	if (ir->op == ir_txs)
+	{
+		buffer.asprintf_append("textureSize (");
+		ir->sampler->accept(this);
+		if (ir_texture::has_lod(ir->sampler->type))
+		{
+			buffer.asprintf_append(", ");
+			ir->lod_info.lod->accept(this);
+		}
+		buffer.asprintf_append(")");
+		return;
+	}
+
 	const glsl_type* uv_type = ir->coordinate->type;
 	const int uv_dim = uv_type->vector_elements;
 	int sampler_uv_dim = tex_sampler_dim_size[sampler_dim];
@@ -832,7 +847,9 @@ void ir_print_glsl_visitor::visit(ir_texture *ir)
 		sampler_uv_dim += 1;
 	if (is_array)
 		sampler_uv_dim += 1;
-	const bool is_proj = (uv_dim > sampler_uv_dim);
+	if (is_msaa)
+		sampler_uv_dim += 1;
+	const bool is_proj = ((ir->op == ir_tex || ir->op == ir_txb || ir->op == ir_txl || ir->op == ir_txd) && uv_dim > sampler_uv_dim);
 	const bool is_lod = (ir->op == ir_txl);
 	
 #if 0 // BK - disable LOD workarounds.
@@ -866,26 +883,24 @@ void ir_print_glsl_visitor::visit(ir_texture *ir)
 	}
 #endif // 0
 
-	
-    // texture function name
-    //ACS: shadow lookups and lookups with dimensionality included in the name were deprecated in 130
-    if(state->language_version<130) 
-    {
-        buffer.asprintf_append ("%s", is_shadow ? "shadow" : "texture");
-        buffer.asprintf_append ("%s", tex_sampler_dim_name[sampler_dim]);
-    }
-    else 
-    {
-        if (ir->op == ir_txf)
-            buffer.asprintf_append ("texelFetch");
-        else
-            buffer.asprintf_append ("texture");
-    }
+	// texture function name
+	//ACS: shadow lookups and lookups with dimensionality included in the name were deprecated in 130
+	if(state->language_version<130) 
+	{
+		buffer.asprintf_append ("%s", is_shadow ? "shadow" : "texture");
+		buffer.asprintf_append ("%s", tex_sampler_dim_name[sampler_dim]);
+	}
+	else
+	{
+		if (ir->op == ir_txf || ir->op == ir_txf_ms)
+			buffer.asprintf_append ("texelFetch");
+		else
+			buffer.asprintf_append ("texture");
+	}
 
 	if (is_array && state->EXT_texture_array_enable)
 		buffer.asprintf_append ("Array");
-	
-	if (is_proj)
+	if (ir->op == ir_tex && is_proj)
 		buffer.asprintf_append ("Proj");
 	if (ir->op == ir_txl)
 		buffer.asprintf_append ("Lod");
@@ -921,12 +936,19 @@ void ir_print_glsl_visitor::visit(ir_texture *ir)
 	ir->coordinate->accept(this);
 	
 	// lod
-	if (ir->op == ir_txl || ir->op == ir_txf)
+	if (ir->op == ir_txl || ir->op == ir_txf || ir->op == ir_txf_ms)
 	{
 		buffer.asprintf_append (", ");
 		ir->lod_info.lod->accept(this);
 	}
 	
+	// sample index
+	if (ir->op == ir_txf_ms)
+	{
+		buffer.asprintf_append (", ");
+		ir->lod_info.sample_index->accept(this);
+	}
+
 	// grad
 	if (ir->op == ir_txd)
 	{

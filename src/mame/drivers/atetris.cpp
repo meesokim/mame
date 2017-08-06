@@ -56,6 +56,8 @@
 #include "sound/sn76496.h"
 #include "sound/pokey.h"
 #include "machine/nvram.h"
+#include "machine/watchdog.h"
+#include "speaker.h"
 
 
 #define MASTER_CLOCK        XTAL_14_31818MHz
@@ -198,7 +200,7 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8, atetris_state )
 	AM_RANGE(0x2400, 0x25ff) AM_MIRROR(0x0200) AM_RAM_WRITE(nvram_w) AM_SHARE("nvram")
 	AM_RANGE(0x2800, 0x280f) AM_MIRROR(0x03e0) AM_DEVREADWRITE("pokey1", pokey_device, read, write)
 	AM_RANGE(0x2810, 0x281f) AM_MIRROR(0x03e0) AM_DEVREADWRITE("pokey2", pokey_device, read, write)
-	AM_RANGE(0x3000, 0x3000) AM_MIRROR(0x03ff) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x3000, 0x3000) AM_MIRROR(0x03ff) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x3400, 0x3400) AM_MIRROR(0x03ff) AM_WRITE(nvram_enable_w)
 	AM_RANGE(0x3800, 0x3800) AM_MIRROR(0x03ff) AM_WRITE(irq_ack_w)
 	AM_RANGE(0x3c00, 0x3c00) AM_MIRROR(0x03ff) AM_WRITE(coincount_w)
@@ -218,7 +220,7 @@ static ADDRESS_MAP_START( atetrisb2_map, AS_PROGRAM, 8, atetris_state )
 	AM_RANGE(0x2806, 0x2806) AM_DEVWRITE("sn3", sn76496_device, write)
 	AM_RANGE(0x2808, 0x2808) AM_READ_PORT("IN0")
 	AM_RANGE(0x2818, 0x2818) AM_READ_PORT("IN1")
-	AM_RANGE(0x3000, 0x3000) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x3000, 0x3000) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x3400, 0x3400) AM_WRITE(nvram_enable_w)
 	AM_RANGE(0x3800, 0x3800) AM_WRITE(irq_ack_w)
 	AM_RANGE(0x3c00, 0x3c00) AM_WRITE(coincount_w)
@@ -238,7 +240,7 @@ static ADDRESS_MAP_START( atetrisb3_map, AS_PROGRAM, 8, atetris_state )
 	//AM_RANGE(0x2806, 0x2806) AM_DEVWRITE("sn3", sn76489_device, write)
 	AM_RANGE(0x2808, 0x2808) AM_READ_PORT("IN0")
 	AM_RANGE(0x2818, 0x2818) AM_READ_PORT("IN1")
-	AM_RANGE(0x3000, 0x3000) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x3000, 0x3000) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x3400, 0x3400) AM_WRITE(nvram_enable_w)
 	AM_RANGE(0x3800, 0x3800) AM_WRITE(irq_ack_w)
 	AM_RANGE(0x3c00, 0x3c00) AM_WRITE(coincount_w)
@@ -324,7 +326,7 @@ GFXDECODE_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( atetris, atetris_state )
+static MACHINE_CONFIG_START( atetris )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502,MASTER_CLOCK/8)
@@ -333,6 +335,8 @@ static MACHINE_CONFIG_START( atetris, atetris_state )
 	MCFG_SLAPSTIC_ADD("slapstic", 101)
 
 	MCFG_NVRAM_ADD_1FILL("nvram")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", atetris)
@@ -361,7 +365,7 @@ static MACHINE_CONFIG_START( atetris, atetris_state )
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( atetrisb2, atetris_state )
+static MACHINE_CONFIG_START( atetrisb2 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502,BOOTLEG_CLOCK/8)
@@ -370,6 +374,8 @@ static MACHINE_CONFIG_START( atetrisb2, atetris_state )
 	MCFG_SLAPSTIC_ADD("slapstic", 101)
 
 	MCFG_NVRAM_ADD_1FILL("nvram")
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", atetris)
@@ -542,7 +548,7 @@ ROM_END
 
 DRIVER_INIT_MEMBER(atetris_state,atetris)
 {
-	UINT8 *rgn = memregion("maincpu")->base();
+	uint8_t *rgn = memregion("maincpu")->base();
 
 	m_slapstic_device->slapstic_init();
 	m_slapstic_source = &rgn[0x10000];
@@ -557,10 +563,10 @@ DRIVER_INIT_MEMBER(atetris_state,atetris)
  *
  *************************************/
 
-GAME( 1988, atetris,  0,       atetris,   atetris, atetris_state,  atetris, ROT0,   "Atari Games", "Tetris (set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, atetrisa, atetris, atetris,   atetris, atetris_state,  atetris, ROT0,   "Atari Games", "Tetris (set 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, atetrisb, atetris, atetris,   atetris, atetris_state,  atetris, ROT0,   "bootleg",     "Tetris (bootleg set 1)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, atetrisb2,atetris, atetrisb2, atetris, atetris_state,  atetris, ROT0,   "bootleg",     "Tetris (bootleg set 2)", MACHINE_SUPPORTS_SAVE )
-GAME( 1988, atetrisb3,atetris, atetrisb3, atetris, atetris_state,  atetris, ROT0,   "bootleg",     "Tetris (bootleg set 3)", MACHINE_NO_SOUND | MACHINE_SUPPORTS_SAVE )
+GAME( 1988, atetris,  0,       atetris,   atetris,  atetris_state, atetris, ROT0,   "Atari Games", "Tetris (set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, atetrisa, atetris, atetris,   atetris,  atetris_state, atetris, ROT0,   "Atari Games", "Tetris (set 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, atetrisb, atetris, atetris,   atetris,  atetris_state, atetris, ROT0,   "bootleg",     "Tetris (bootleg set 1)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, atetrisb2,atetris, atetrisb2, atetris,  atetris_state, atetris, ROT0,   "bootleg",     "Tetris (bootleg set 2)", MACHINE_SUPPORTS_SAVE )
+GAME( 1988, atetrisb3,atetris, atetrisb3, atetris,  atetris_state, atetris, ROT0,   "bootleg",     "Tetris (bootleg set 3)", MACHINE_NO_SOUND | MACHINE_SUPPORTS_SAVE )
 GAME( 1989, atetrisc, atetris, atetris,   atetrisc, atetris_state, atetris, ROT270, "Atari Games", "Tetris (cocktail set 1)", MACHINE_SUPPORTS_SAVE )
 GAME( 1989, atetrisc2,atetris, atetris,   atetrisc, atetris_state, atetris, ROT270, "Atari Games", "Tetris (cocktail set 2)", MACHINE_SUPPORTS_SAVE )

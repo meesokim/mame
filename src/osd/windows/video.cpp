@@ -7,19 +7,16 @@
 //============================================================
 
 // standard windows headers
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 // MAME headers
 #include "emu.h"
-#include "ui/ui.h"
 #include "emuopts.h"
 #include "render.h"
 #include "uiinput.h"
 
 // MAMEOS headers
 #include "winmain.h"
-#include "video.h"
 #include "window.h"
 #include "strconv.h"
 
@@ -36,24 +33,11 @@
 
 osd_video_config video_config;
 
-// monitor info
-osd_monitor_info *osd_monitor_info::list = NULL;
-
-
-//============================================================
-//  LOCAL VARIABLES
-//============================================================
-
 
 //============================================================
 //  PROTOTYPES
 //============================================================
 
-static void init_monitors(void);
-
-static void check_osd_inputs(running_machine &machine);
-
-static float get_aspect(const char *defdata, const char *data, int report_error);
 static void get_resolution(const char *defdata, const char *data, osd_window_config *config, int report_error);
 
 
@@ -69,9 +53,6 @@ bool windows_osd_interface::video_init()
 	// extract data from the options
 	extract_video_config();
 
-	// set up monitors first
-	init_monitors();
-
 	// initialize the window system so we can make windows
 	window_init();
 
@@ -79,22 +60,13 @@ bool windows_osd_interface::video_init()
 	windows_options &options = downcast<windows_options &>(machine().options());
 	for (int index = 0; index < video_config.numscreens; index++)
 	{
-		win_window_info::create(machine(), index, osd_monitor_info::pick_monitor(options, index), &windows[index]);
+		win_window_info::create(machine(), index, m_monitor_module->pick_monitor(options, index), &windows[index]);
 	}
 
 	if (video_config.mode != VIDEO_MODE_NONE)
-		SetForegroundWindow(win_window_list->m_hwnd);
+		SetForegroundWindow(std::static_pointer_cast<win_window_info>(osd_common_t::s_window_list.front())->platform_window());
 
 	return true;
-}
-
-//============================================================
-//  get_slider_list
-//============================================================
-
-slider_state *windows_osd_interface::get_slider_list()
-{
-	return m_sliders;
 }
 
 //============================================================
@@ -104,70 +76,7 @@ slider_state *windows_osd_interface::get_slider_list()
 void windows_osd_interface::video_exit()
 {
 	window_exit();
-
-	// free all of our monitor information
-	while (osd_monitor_info::list != NULL)
-	{
-		osd_monitor_info *temp = osd_monitor_info::list;
-		osd_monitor_info::list = temp->m_next;
-		global_free(temp);
-	}
 }
-
-
-
-win_monitor_info::win_monitor_info(const HMONITOR handle, const char *monitor_device, float aspect)
-	: osd_monitor_info(&m_handle, monitor_device, aspect), m_handle(handle)
-{
-	win_monitor_info::refresh();
-}
-
-win_monitor_info::~win_monitor_info()
-{
-}
-
-//============================================================
-//  winvideo_monitor_refresh
-//============================================================
-
-void win_monitor_info::refresh()
-{
-	BOOL result;
-
-	// fetch the latest info about the monitor
-	m_info.cbSize = sizeof(m_info);
-	result = GetMonitorInfo(m_handle, (LPMONITORINFO)&m_info);
-	assert(result);
-	char *temp = utf8_from_tstring(m_info.szDevice);
-
-	if (temp) strncpy(m_name, temp, sizeof(m_name));
-
-	osd_free(temp);
-
-	m_pos_size = RECT_to_osd_rect(m_info.rcMonitor);
-	m_usuable_pos_size = RECT_to_osd_rect(m_info.rcWork);
-	m_is_primary = ((m_info.dwFlags & MONITORINFOF_PRIMARY) != 0);
-	(void)result; // to silence gcc 4.6
-}
-
-
-
-//============================================================
-//  winvideo_monitor_from_handle
-//============================================================
-
-osd_monitor_info *win_monitor_info::monitor_from_handle(HMONITOR hmonitor)
-{
-	osd_monitor_info *monitor;
-
-	// find the matching monitor
-	for (monitor = osd_monitor_info::list; monitor != NULL; monitor = monitor->m_next)
-		if (*((HMONITOR *)monitor->oshandle()) == hmonitor)
-			return monitor;
-	return NULL;
-}
-
-
 
 //============================================================
 //  update
@@ -175,144 +84,24 @@ osd_monitor_info *win_monitor_info::monitor_from_handle(HMONITOR hmonitor)
 
 void windows_osd_interface::update(bool skip_redraw)
 {
-	// ping the watchdog on each update
-	winmain_watchdog_ping();
-
-	update_slider_list();
+	osd_common_t::update(skip_redraw);
 
 	// if we're not skipping this redraw, update all windows
 	if (!skip_redraw)
 	{
 //      profiler_mark(PROFILER_BLIT);
-		for (win_window_info *window = win_window_list; window != NULL; window = window->m_next)
+		for (auto window : osd_common_t::s_window_list)
 			window->update();
 //      profiler_mark(PROFILER_END);
 	}
 
 	// poll the joystick values here
-	winwindow_process_events(machine(), TRUE, FALSE);
+	winwindow_process_events(machine(), true, false);
 	poll_input(machine());
-	check_osd_inputs(machine());
+	check_osd_inputs();
 	// if we're running, disable some parts of the debugger
 	if ((machine().debug_flags & DEBUG_FLAG_OSD_ENABLED) != 0)
 		debugger_update();
-}
-
-
-
-
-
-//============================================================
-//  monitor_enum_callback
-//============================================================
-
-BOOL CALLBACK win_monitor_info::monitor_enum_callback(HMONITOR handle, HDC dc, LPRECT rect, LPARAM data)
-{
-	osd_monitor_info ***tailptr = (osd_monitor_info ***)data;
-	osd_monitor_info *monitor;
-	MONITORINFOEX info;
-	BOOL result;
-
-	// get the monitor info
-	info.cbSize = sizeof(info);
-	result = GetMonitorInfo(handle, (LPMONITORINFO)&info);
-	assert(result);
-	(void)result; // to silence gcc 4.6
-
-	// guess the aspect ratio assuming square pixels
-	float aspect = (float)(info.rcMonitor.right - info.rcMonitor.left) / (float)(info.rcMonitor.bottom - info.rcMonitor.top);
-
-	// allocate a new monitor info
-	char *temp = utf8_from_tstring(info.szDevice);
-	// copy in the data
-	monitor = global_alloc(win_monitor_info(handle, temp, aspect));
-	osd_free(temp);
-
-	// hook us into the list
-	**tailptr = monitor;
-	*tailptr = &monitor->m_next;
-
-	// enumerate all the available monitors so to list their names in verbose mode
-	return TRUE;
-}
-
-
-//============================================================
-//  init_monitors
-//============================================================
-
-static void init_monitors(void)
-{
-	osd_monitor_info **tailptr;
-
-	// make a list of monitors
-	osd_monitor_info::list = NULL;
-	tailptr = &osd_monitor_info::list;
-	EnumDisplayMonitors(NULL, NULL, win_monitor_info::monitor_enum_callback, (LPARAM)&tailptr);
-
-	// if we're verbose, print the list of monitors
-	{
-		osd_monitor_info *monitor;
-		for (monitor = osd_monitor_info::list; monitor != NULL; monitor = monitor->m_next)
-		{
-			osd_printf_verbose("Video: Monitor %p = \"%s\" %s\n", monitor->oshandle(), monitor->devicename(), monitor->is_primary() ? "(primary)" : "");
-		}
-	}
-}
-
-
-//============================================================
-//  pick_monitor
-//============================================================
-
-osd_monitor_info *osd_monitor_info::pick_monitor(osd_options &osdopts, int index)
-{
-	windows_options &options = reinterpret_cast<windows_options &>(osdopts);
-	osd_monitor_info *monitor;
-	const char *scrname, *scrname2;
-	int moncount = 0;
-	float aspect;
-
-	// get the screen option
-	scrname = options.screen();
-	scrname2 = options.screen(index);
-
-	// decide which one we want to use
-	if (strcmp(scrname2, "auto") != 0)
-		scrname = scrname2;
-
-	// get the aspect ratio
-	aspect = get_aspect(options.aspect(), options.aspect(index), TRUE);
-
-	// look for a match in the name first
-	if (scrname != NULL && (scrname[0] != 0))
-	{
-		for (monitor = osd_monitor_info::list; monitor != NULL; monitor = monitor->next())
-		{
-			moncount++;
-			if (strcmp(scrname, monitor->devicename()) == 0)
-				goto finishit;
-		}
-	}
-
-	// didn't find it; alternate monitors until we hit the jackpot
-	index %= moncount;
-	for (monitor = osd_monitor_info::list; monitor != NULL; monitor = monitor->next())
-		if (index-- == 0)
-			goto finishit;
-
-	// return the primary just in case all else fails
-	for (monitor = osd_monitor_info::list; monitor != NULL; monitor = monitor->next())
-		if (monitor->is_primary())
-			goto finishit;
-
-	// FIXME: FatalError?
-finishit:
-	if (aspect != 0)
-	{
-		monitor->set_aspect(aspect);
-	}
-	return monitor;
 }
 
 
@@ -320,22 +109,22 @@ finishit:
 //  check_osd_inputs
 //============================================================
 
-static void check_osd_inputs(running_machine &machine)
+void windows_osd_interface::check_osd_inputs()
 {
 	// check for toggling fullscreen mode
-	if (machine.ui_input().pressed(IPT_OSD_1))
+	if (machine().ui_input().pressed(IPT_OSD_1))
 		winwindow_toggle_full_screen();
 
 	// check for taking fullscreen snap
-	if (machine.ui_input().pressed(IPT_OSD_2))
+	if (machine().ui_input().pressed(IPT_OSD_2))
 		winwindow_take_snap();
 
 	// check for taking fullscreen video
-	if (machine.ui_input().pressed(IPT_OSD_3))
+	if (machine().ui_input().pressed(IPT_OSD_3))
 		winwindow_take_video();
 
 	// check for taking fullscreen video
-	if (machine.ui_input().pressed(IPT_OSD_4))
+	if (machine().ui_input().pressed(IPT_OSD_4))
 		winwindow_toggle_fsfx();
 }
 
@@ -380,7 +169,7 @@ void windows_osd_interface::extract_video_config()
 	else if (strcmp(stemp, "none") == 0)
 	{
 		video_config.mode = VIDEO_MODE_NONE;
-		if (options().seconds_to_run() == 0)
+		if (!emulator_info::standalone() && options().seconds_to_run() == 0)
 			osd_printf_warning("Warning: -video none doesn't make much sense without -seconds_to_run\n");
 	}
 #if (USE_OPENGL)
@@ -426,7 +215,7 @@ void windows_osd_interface::extract_video_config()
 					strcpy(video_config.glsl_shader_mamebm[i], stemp);
 					video_config.glsl_shader_mamebm_num++;
 				} else {
-					video_config.glsl_shader_mamebm[i] = NULL;
+					video_config.glsl_shader_mamebm[i] = nullptr;
 				}
 			}
 
@@ -441,7 +230,7 @@ void windows_osd_interface::extract_video_config()
 					strcpy(video_config.glsl_shader_scrn[i], stemp);
 					video_config.glsl_shader_scrn_num++;
 				} else {
-					video_config.glsl_shader_scrn[i] = NULL;
+					video_config.glsl_shader_scrn[i] = nullptr;
 				}
 			}
 		} else {
@@ -450,38 +239,17 @@ void windows_osd_interface::extract_video_config()
 			video_config.glsl_shader_mamebm_num=0;
 			for(i=0; i<GLSL_SHADER_MAX; i++)
 			{
-				video_config.glsl_shader_mamebm[i] = NULL;
+				video_config.glsl_shader_mamebm[i] = nullptr;
 			}
 			video_config.glsl_shader_scrn_num=0;
 			for(i=0; i<GLSL_SHADER_MAX; i++)
 			{
-				video_config.glsl_shader_scrn[i] = NULL;
+				video_config.glsl_shader_scrn[i] = nullptr;
 			}
 		}
 
 	#endif /* USE_OPENGL */
 
-}
-
-
-
-//============================================================
-//  get_aspect
-//============================================================
-
-static float get_aspect(const char *defdata, const char *data, int report_error)
-{
-	int num = 0, den = 1;
-
-	if (strcmp(data, OSDOPTVAL_AUTO) == 0)
-	{
-		if (strcmp(defdata,OSDOPTVAL_AUTO) == 0)
-			return 0;
-		data = defdata;
-	}
-	if (sscanf(data, "%d:%d", &num, &den) != 2 && report_error)
-		osd_printf_error("Illegal aspect ratio value = %s\n", data);
-	return (float)num / (float)den;
 }
 
 

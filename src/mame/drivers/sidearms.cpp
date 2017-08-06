@@ -45,10 +45,15 @@ Notes:
 ***************************************************************************/
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "sound/2203intf.h"
-#include "sound/2151intf.h"
 #include "includes/sidearms.h"
+
+#include "cpu/z80/z80.h"
+#include "machine/gen_latch.h"
+#include "machine/watchdog.h"
+#include "sound/2203intf.h"
+#include "sound/ym2151.h"
+#include "screen.h"
+#include "speaker.h"
 
 void sidearms_state::machine_start()
 {
@@ -61,14 +66,12 @@ WRITE8_MEMBER(sidearms_state::bankswitch_w)
 }
 
 
-/* Turtle Ship input ports are rotated 90 degrees */
-IOPORT_ARRAY_MEMBER(sidearms_state::ports) { "SYSTEM", "P1", "P2", "DSW0", "DSW1" };
-
+// Turtle Ship input ports are rotated 90 degrees
 READ8_MEMBER(sidearms_state::turtship_ports_r)
 {
 	int res = 0;
 	for (int i = 0; i < 5;i++)
-		res |= ((read_safe(m_ports[i], 0) >> offset) & 1) << i;
+		res |= ((m_ports[i].read_safe(0) >> offset) & 1) << i;
 
 	return res;
 }
@@ -79,9 +82,9 @@ static ADDRESS_MAP_START( sidearms_map, AS_PROGRAM, 8, sidearms_state )
 	AM_RANGE(0x8000, 0xbfff) AM_ROMBANK("bank1")
 	AM_RANGE(0xc000, 0xc3ff) AM_RAM_DEVWRITE("palette", palette_device, write) AM_SHARE("palette")
 	AM_RANGE(0xc400, 0xc7ff) AM_RAM_DEVWRITE("palette", palette_device, write_ext) AM_SHARE("palette_ext")
-	AM_RANGE(0xc800, 0xc800) AM_READ_PORT("SYSTEM") AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0xc800, 0xc800) AM_READ_PORT("SYSTEM") AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0xc801, 0xc801) AM_READ_PORT("P1") AM_WRITE(bankswitch_w)
-	AM_RANGE(0xc802, 0xc802) AM_READ_PORT("P2") AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0xc802, 0xc802) AM_READ_PORT("P2") AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0xc803, 0xc803) AM_READ_PORT("DSW0")
 	AM_RANGE(0xc804, 0xc804) AM_READ_PORT("DSW1") AM_WRITE(c804_w)
 	AM_RANGE(0xc805, 0xc805) AM_READ_PORT("DSW2") AM_WRITE(star_scrollx_w)
@@ -103,9 +106,9 @@ static ADDRESS_MAP_START( turtship_map, AS_PROGRAM, 8, sidearms_state )
 	AM_RANGE(0xe000, 0xe3ff) AM_RAM_DEVWRITE("palette", palette_device, write) AM_SHARE("palette")
 	AM_RANGE(0xe400, 0xe7ff) AM_RAM_DEVWRITE("palette", palette_device, write_ext) AM_SHARE("palette_ext")
 	AM_RANGE(0xe800, 0xe807) AM_READ(turtship_ports_r)
-	AM_RANGE(0xe800, 0xe800) AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0xe800, 0xe800) AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0xe801, 0xe801) AM_WRITE(bankswitch_w)
-	AM_RANGE(0xe802, 0xe802) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0xe802, 0xe802) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0xe804, 0xe804) AM_WRITE(c804_w)
 	AM_RANGE(0xe805, 0xe805) AM_WRITE(star_scrollx_w)
 	AM_RANGE(0xe806, 0xe806) AM_WRITE(star_scrolly_w)
@@ -119,7 +122,7 @@ ADDRESS_MAP_END
 static ADDRESS_MAP_START( sidearms_sound_map, AS_PROGRAM, 8, sidearms_state )
 	AM_RANGE(0x0000, 0x7fff) AM_ROM
 	AM_RANGE(0xc000, 0xc7ff) AM_RAM
-	AM_RANGE(0xd000, 0xd000) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xd000, 0xd000) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 	AM_RANGE(0xf000, 0xf001) AM_DEVREADWRITE("ym1", ym2203_device, read, write)
 	AM_RANGE(0xf002, 0xf003) AM_DEVREADWRITE("ym2", ym2203_device, read, write)
 ADDRESS_MAP_END
@@ -144,9 +147,9 @@ static ADDRESS_MAP_START( whizz_map, AS_PROGRAM, 8, sidearms_state )
 	AM_RANGE(0x8000, 0xbfff) AM_ROMBANK("bank1")
 	AM_RANGE(0xc000, 0xc3ff) AM_RAM_DEVWRITE("palette", palette_device, write) AM_SHARE("palette")
 	AM_RANGE(0xc400, 0xc7ff) AM_RAM_DEVWRITE("palette", palette_device, write_ext) AM_SHARE("palette_ext")
-	AM_RANGE(0xc800, 0xc800) AM_READ_PORT("DSW0") AM_WRITE(soundlatch_byte_w)
+	AM_RANGE(0xc800, 0xc800) AM_READ_PORT("DSW0") AM_DEVWRITE("soundlatch", generic_latch_8_device, write)
 	AM_RANGE(0xc801, 0xc801) AM_READ_PORT("DSW1") AM_WRITE(whizz_bankswitch_w)
-	AM_RANGE(0xc802, 0xc802) AM_READ_PORT("DSW2") AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0xc802, 0xc802) AM_READ_PORT("DSW2") AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0xc803, 0xc803) AM_READ_PORT("IN0") AM_WRITENOP
 	AM_RANGE(0xc804, 0xc804) AM_READ_PORT("IN1") AM_WRITE(c804_w)
 	AM_RANGE(0xc805, 0xc805) AM_READ_PORT("IN2") AM_WRITENOP
@@ -172,7 +175,7 @@ static ADDRESS_MAP_START( whizz_io_map, AS_IO, 8, sidearms_state )
 	ADDRESS_MAP_GLOBAL_MASK(0xff)
 	AM_RANGE(0x00, 0x01) AM_DEVREADWRITE("ymsnd", ym2151_device, read, write)
 	AM_RANGE(0x40, 0x40) AM_WRITENOP
-	AM_RANGE(0xc0, 0xc0) AM_READ(soundlatch_byte_r)
+	AM_RANGE(0xc0, 0xc0) AM_DEVREAD("soundlatch", generic_latch_8_device, read)
 ADDRESS_MAP_END
 
 
@@ -590,7 +593,7 @@ static GFXDECODE_START( turtship )
 GFXDECODE_END
 
 
-static MACHINE_CONFIG_START( sidearms, sidearms_state )
+static MACHINE_CONFIG_START( sidearms )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 4000000) /* 4 MHz (?) */
@@ -599,6 +602,8 @@ static MACHINE_CONFIG_START( sidearms, sidearms_state )
 
 	MCFG_CPU_ADD("audiocpu", Z80, 4000000) /* 4 MHz (?) */
 	MCFG_CPU_PROGRAM_MAP(sidearms_sound_map)
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_BUFFERED_SPRITERAM8_ADD("spriteram")
@@ -609,7 +614,7 @@ static MACHINE_CONFIG_START( sidearms, sidearms_state )
 	MCFG_SCREEN_SIZE(64*8, 32*8)
 	MCFG_SCREEN_VISIBLE_AREA(8*8, (64-8)*8-1, 2*8, 30*8-1 )
 	MCFG_SCREEN_UPDATE_DRIVER(sidearms_state, screen_update)
-	MCFG_SCREEN_VBLANK_DEVICE("spriteram", buffered_spriteram8_device, vblank_copy_rising)
+	MCFG_SCREEN_VBLANK_CALLBACK(DEVWRITELINE("spriteram", buffered_spriteram8_device, vblank_copy_rising))
 	MCFG_SCREEN_PALETTE("palette")
 
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", sidearms)
@@ -619,6 +624,8 @@ static MACHINE_CONFIG_START( sidearms, sidearms_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_SOUND_ADD("ym1", YM2203, 4000000)
 	MCFG_YM2203_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
@@ -635,7 +642,7 @@ static MACHINE_CONFIG_START( sidearms, sidearms_state )
 MACHINE_CONFIG_END
 
 
-static MACHINE_CONFIG_START( turtship, sidearms_state )
+static MACHINE_CONFIG_START( turtship )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 4000000) /* 4 MHz (?) */
@@ -645,6 +652,8 @@ static MACHINE_CONFIG_START( turtship, sidearms_state )
 	MCFG_CPU_ADD("audiocpu", Z80, 4000000) /* 4 MHz (?) */
 	MCFG_CPU_PROGRAM_MAP(sidearms_sound_map)
 
+	MCFG_WATCHDOG_ADD("watchdog")
+
 	/* video hardware */
 	MCFG_BUFFERED_SPRITERAM8_ADD("spriteram")
 
@@ -653,7 +662,7 @@ static MACHINE_CONFIG_START( turtship, sidearms_state )
 	MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(2500) /* not accurate */)
 	MCFG_SCREEN_SIZE(64*8, 32*8)
 	MCFG_SCREEN_VISIBLE_AREA(8*8, (64-8)*8-1, 2*8, 30*8-1 )
-	MCFG_SCREEN_VBLANK_DEVICE("spriteram", buffered_spriteram8_device, vblank_copy_rising)
+	MCFG_SCREEN_VBLANK_CALLBACK(DEVWRITELINE("spriteram", buffered_spriteram8_device, vblank_copy_rising))
 	MCFG_SCREEN_UPDATE_DRIVER(sidearms_state, screen_update)
 	MCFG_SCREEN_PALETTE("palette")
 
@@ -665,6 +674,8 @@ static MACHINE_CONFIG_START( turtship, sidearms_state )
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
+
 	MCFG_SOUND_ADD("ym1", YM2203, 4000000)
 	MCFG_YM2203_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
 	MCFG_SOUND_ROUTE(0, "mono", 0.15)
@@ -679,7 +690,7 @@ static MACHINE_CONFIG_START( turtship, sidearms_state )
 	MCFG_SOUND_ROUTE(3, "mono", 0.25)
 MACHINE_CONFIG_END
 
-static MACHINE_CONFIG_START( whizz, sidearms_state )
+static MACHINE_CONFIG_START( whizz )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 4000000)        /* 4 MHz (?) */
@@ -693,6 +704,8 @@ static MACHINE_CONFIG_START( whizz, sidearms_state )
 
 	MCFG_QUANTUM_TIME(attotime::from_hz(60000))
 
+	MCFG_WATCHDOG_ADD("watchdog")
+
 	/* video hardware */
 	MCFG_BUFFERED_SPRITERAM8_ADD("spriteram")
 
@@ -702,7 +715,7 @@ static MACHINE_CONFIG_START( whizz, sidearms_state )
 	MCFG_SCREEN_SIZE(64*8, 32*8)
 	MCFG_SCREEN_VISIBLE_AREA(8*8, (64-8)*8-1, 2*8, 30*8-1 )
 	MCFG_SCREEN_UPDATE_DRIVER(sidearms_state, screen_update)
-	MCFG_SCREEN_VBLANK_DEVICE("spriteram", buffered_spriteram8_device, vblank_copy_rising)
+	MCFG_SCREEN_VBLANK_CALLBACK(DEVWRITELINE("spriteram", buffered_spriteram8_device, vblank_copy_rising))
 	MCFG_SCREEN_PALETTE("palette")
 
 	MCFG_GFXDECODE_ADD("gfxdecode", "palette", turtship)
@@ -712,6 +725,8 @@ static MACHINE_CONFIG_START( whizz, sidearms_state )
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
+
+	MCFG_GENERIC_LATCH_8_ADD("soundlatch")
 
 	MCFG_YM2151_ADD("ymsnd", 4000000)
 	MCFG_YM2151_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
@@ -1036,15 +1051,15 @@ ROM_END
 
 ROM_START( turtshipkn )
 		ROM_REGION( 0x20000, "maincpu", 0 )     /* 64k for code + banked ROMs images */
-		ROM_LOAD( "T-3.G5",   0x00000, 0x08000, CRC(529b091c) SHA1(9a3a885dbf1f9d3c3c326418efdcb4f6f96eb4ae) )
-		ROM_LOAD( "T-2.G3",    0x08000, 0x08000, CRC(d2f30195) SHA1(d64f088ed776658563943e8cde086842d0d899f8) )
-		ROM_LOAD( "T-1.E3",   0x10000, 0x08000, CRC(2d02da90) SHA1(5cf059e04e145861f9877cefa2c7168e6ded19ac) )
+		ROM_LOAD( "T-3.G5",   0x00000, 0x08000, CRC(529b091c) SHA1(9a3a885dbf1f9d3c3c326418efdcb4f6f96eb4ae) ) // sldh
+		ROM_LOAD( "T-2.G3",   0x08000, 0x08000, CRC(d2f30195) SHA1(d64f088ed776658563943e8cde086842d0d899f8) ) // sldh
+		ROM_LOAD( "T-1.E3",   0x10000, 0x08000, CRC(2d02da90) SHA1(5cf059e04e145861f9877cefa2c7168e6ded19ac) ) // sldh
 
 		ROM_REGION( 0x10000, "audiocpu", 0 )
 		ROM_LOAD( "T-4.A8",    0x00000, 0x08000, CRC(1cbe48e8) SHA1(6ac5981d36a44595bb8dc847c54c7be7b374f82c) )
 
 		ROM_REGION( 0x04000, "gfx1", 0 )
-		ROM_LOAD( "T-5.K8",    0x00000, 0x04000, CRC(5c2ee02d) SHA1(c8d3dbdaab943c1639795915cf275951501a2a77) ) /* characters */
+		ROM_LOAD( "T-5.K8",    0x00000, 0x04000, CRC(5c2ee02d) SHA1(c8d3dbdaab943c1639795915cf275951501a2a77) ) // sldh
 		ROM_CONTINUE(          0x00000, 0x04000 )   /* A14 tied high, only upper half is used */
 
 		ROM_REGION( 0x80000, "gfx2", 0 )
@@ -1059,9 +1074,9 @@ ROM_START( turtshipkn )
 
 		ROM_REGION( 0x40000, "gfx3", 0 )
 		ROM_LOAD( "T-13.I1",       0x00000, 0x10000, CRC(1cc87f50) SHA1(d7d8a4376b556675dafa0a407bb34b6017f17e7d) ) /* sprites */
-		ROM_LOAD( "T-15.I3",       0x10000, 0x10000, CRC(3bf91fb8) SHA1(1c8368dc8d52c3c48a85391f00c91a80fa5d781d) )
+		ROM_LOAD( "T-15.I3",       0x10000, 0x10000, CRC(3bf91fb8) SHA1(1c8368dc8d52c3c48a85391f00c91a80fa5d781d) ) // sldh
 		ROM_LOAD( "T-12.G1",       0x20000, 0x10000, CRC(57783312) SHA1(57942e8c3b7be63ea62bae3c104cb2842eb6b755) )
-		ROM_LOAD( "T-14.G3",       0x30000, 0x10000, CRC(ee162dc0) SHA1(127b3cb3ddd47aa8ee70cad2d54b1306ad8f10e8) )
+		ROM_LOAD( "T-14.G3",       0x30000, 0x10000, CRC(ee162dc0) SHA1(127b3cb3ddd47aa8ee70cad2d54b1306ad8f10e8) ) // sldh
 
 		ROM_REGION( 0x08000, "gfx4", 0 )    /* background tilemaps */
 		ROM_LOAD( "T-16.F9",  0x00000, 0x08000, CRC(9b377277) SHA1(4858560e35144727aea958023f3df785baa994a8) )

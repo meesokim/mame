@@ -61,9 +61,10 @@ memory map:
 #include "k051960.h"
 
 #define VERBOSE 0
-#define LOG(x) do { if (VERBOSE) logerror x; } while (0)
+#include "logmacro.h"
 
-const device_type K051960 = &device_creator<k051960_device>;
+
+DEFINE_DEVICE_TYPE(K051960, k051960_device, "k051960", "K051960 Sprite Generator")
 
 const gfx_layout k051960_device::spritelayout =
 {
@@ -125,22 +126,20 @@ GFXDECODE_MEMBER( k051960_device::gfxinfo_gradius3 )
 GFXDECODE_END
 
 
-k051960_device::k051960_device(const machine_config &mconfig, const char *tag, device_t *owner, UINT32 clock)
-	: device_t(mconfig, K051960, "K051960 Sprite Generator", tag, owner, clock, "k051960", __FILE__),
-	device_gfx_interface(mconfig, *this, gfxinfo),
-	m_ram(nullptr),
-	m_sprite_rom(nullptr),
-	m_sprite_size(0),
-	m_screen_tag(nullptr),
-	m_screen(nullptr),
-	m_scanline_timer(nullptr),
-	m_irq_handler(*this),
-	m_firq_handler(*this),
-	m_nmi_handler(*this),
-	m_romoffset(0),
-	m_spriteflip(0),
-	m_readroms(0),
-	m_nmi_enabled(0)
+k051960_device::k051960_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
+	: device_t(mconfig, K051960, tag, owner, clock)
+	, device_gfx_interface(mconfig, *this, gfxinfo)
+	, m_ram(nullptr)
+	, m_sprite_rom(*this, DEVICE_SELF)
+	, m_screen(*this, finder_base::DUMMY_TAG)
+	, m_scanline_timer(nullptr)
+	, m_irq_handler(*this)
+	, m_firq_handler(*this)
+	, m_nmi_handler(*this)
+	, m_romoffset(0)
+	, m_spriteflip(0)
+	, m_readroms(0)
+	, m_nmi_enabled(0)
 {
 }
 
@@ -171,10 +170,10 @@ void k051960_device::set_plane_order(device_t &device, int order)
 //  set_screen_tag - set screen we are attached to
 //-------------------------------------------------
 
-void k051960_device::set_screen_tag(device_t &device, device_t *owner, const char *tag)
+void k051960_device::set_screen_tag(device_t &device, const char *tag)
 {
 	k051960_device &dev = dynamic_cast<k051960_device &>(device);
-	dev.m_screen_tag = tag;
+	dev.m_screen.set_tag(tag);
 }
 
 //-------------------------------------------------
@@ -184,16 +183,14 @@ void k051960_device::set_screen_tag(device_t &device, device_t *owner, const cha
 void k051960_device::device_start()
 {
 	// make sure our screen is started
-	m_screen = m_owner->subdevice<screen_device>(m_screen_tag);
 	if (!m_screen->started())
+		throw device_missing_dependencies();
+	if (!palette().device().started())
 		throw device_missing_dependencies();
 
 	// allocate scanline timer and start at first scanline
 	m_scanline_timer = machine().scheduler().timer_alloc(timer_expired_delegate(FUNC(k051960_device::scanline_callback), this));
 	m_scanline_timer->adjust(m_screen->time_until_pos(0));
-
-	m_sprite_rom = region()->base();
-	m_sprite_size = region()->bytes();
 
 	decode_gfx();
 	gfx(0)->set_colors(palette().entries() / gfx(0)->depth());
@@ -201,7 +198,7 @@ void k051960_device::device_start()
 	if (VERBOSE && !(palette().shadows_enabled()))
 		popmessage("driver should use VIDEO_HAS_SHADOWS");
 
-	m_ram = make_unique_clear<UINT8[]>(0x400);
+	m_ram = make_unique_clear<uint8_t[]>(0x400);
 
 	// bind callbacks
 	m_k051960_cb.bind_relative_to(*owner());
@@ -244,7 +241,7 @@ void k051960_device::device_reset()
 TIMER_CALLBACK_MEMBER( k051960_device::scanline_callback )
 {
 	// range 0..255
-	UINT8 y = m_screen->vpos();
+	uint8_t y = m_screen->vpos();
 
 	// 32v
 	if ((y % 32 == 0) && m_nmi_enabled)
@@ -271,7 +268,7 @@ int k051960_device::k051960_fetchromdata( int byte )
 	m_k051960_cb(&code, &color, &pri, &shadow);
 
 	addr = (code << 7) | (off1 << 2) | byte;
-	addr &= m_sprite_size - 1;
+	addr &= m_sprite_rom.mask();
 
 //  popmessage("%s: addr %06x", machine().describe_context(), addr);
 
@@ -386,7 +383,7 @@ void k051960_device::k051960_sprites_draw( bitmap_ind16 &bitmap, const rectangle
 #define NUM_SPRITES 128
 	int offs, pri_code;
 	int sortedlist[NUM_SPRITES];
-	UINT8 drawmode_table[256];
+	uint8_t drawmode_table[256];
 
 	memset(drawmode_table, DRAWMODE_SOURCE, sizeof(drawmode_table));
 	drawmode_table[0] = DRAWMODE_NONE;

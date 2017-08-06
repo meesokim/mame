@@ -31,6 +31,7 @@ TODO:
 #include "cpu/z80/z80.h"
 #include "sound/2203intf.h"
 #include "sound/okim6295.h"
+#include "speaker.h"
 
 
 class capr1_state : public driver_device
@@ -42,8 +43,6 @@ public:
 	{ }
 
 	required_device<cpu_device> m_maincpu;
-
-	DECLARE_WRITE_LINE_MEMBER(ym2203_irq);
 };
 
 
@@ -103,12 +102,7 @@ INPUT_PORTS_END
 
 ***************************************************************************/
 
-WRITE_LINE_MEMBER(capr1_state::ym2203_irq)
-{
-	m_maincpu->set_input_line(0, state ? ASSERT_LINE : CLEAR_LINE);
-}
-
-static MACHINE_CONFIG_START( cspin2, capr1_state )
+static MACHINE_CONFIG_START( cspin2 )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", Z80, 4000000) // clock frequency unknown
@@ -121,7 +115,7 @@ static MACHINE_CONFIG_START( cspin2, capr1_state )
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
 	MCFG_SOUND_ADD("ym", YM2203, 4000000) // clock frequency unknown
-	MCFG_YM2203_IRQ_HANDLER(WRITELINE(capr1_state, ym2203_irq))
+	MCFG_YM2203_IRQ_HANDLER(INPUTLINE("maincpu", 0))
 	//MCFG_AY8910_PORT_A_READ_CB(IOPORT("IN0"))
 	//MCFG_AY8910_PORT_B_READ_CB(IOPORT("IN1"))
 	MCFG_SOUND_ROUTE(0, "mono", 0.15)
@@ -129,7 +123,7 @@ static MACHINE_CONFIG_START( cspin2, capr1_state )
 	MCFG_SOUND_ROUTE(2, "mono", 0.15)
 	MCFG_SOUND_ROUTE(3, "mono", 0.40)
 
-	MCFG_OKIM6295_ADD("oki", 1056000, OKIM6295_PIN7_HIGH) // clock frequency & pin 7 not verified
+	MCFG_OKIM6295_ADD("oki", 1056000, PIN7_HIGH) // clock frequency & pin 7 not verified
 	MCFG_SOUND_ROUTE(ALL_OUTPUTS, "mono", 0.50)
 MACHINE_CONFIG_END
 
@@ -162,4 +156,4 @@ ROM_START( cspin2 )
 ROM_END
 
 
-GAME (1996, cspin2, 0, cspin2, cspin2, driver_device, 0, ROT0, "Taito", "Capriccio Spin 2", MACHINE_IS_SKELETON_MECHANICAL )
+GAME (1996, cspin2, 0, cspin2, cspin2, capr1_state, 0, ROT0, "Taito", "Capriccio Spin 2", MACHINE_IS_SKELETON_MECHANICAL )

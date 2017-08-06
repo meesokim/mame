@@ -114,7 +114,9 @@
 
 #include "emu.h"
 #include "cpu/m6502/m6502.h"
+#include "machine/74259.h"
 #include "machine/nvram.h"
+#include "machine/watchdog.h"
 #include "includes/jedi.h"
 
 
@@ -207,7 +209,7 @@ WRITE8_MEMBER(jedi_state::rom_banksel_w)
 
 READ8_MEMBER(jedi_state::a2d_data_r)
 {
-	UINT8 ret = 0;
+	uint8_t ret = 0;
 
 	switch (m_a2d_select)
 	{
@@ -225,9 +227,15 @@ WRITE8_MEMBER(jedi_state::a2d_select_w)
 }
 
 
-WRITE8_MEMBER(jedi_state::jedi_coin_counter_w)
+WRITE_LINE_MEMBER(jedi_state::coin_counter_left_w)
 {
-	machine().bookkeeping().coin_counter_w(offset, data);
+	machine().bookkeeping().coin_counter_w(0, state);
+}
+
+
+WRITE_LINE_MEMBER(jedi_state::coin_counter_right_w)
+{
+	machine().bookkeeping().coin_counter_w(1, state);
 }
 
 
@@ -266,18 +274,13 @@ static ADDRESS_MAP_START( main_map, AS_PROGRAM, 8, jedi_state )
 	AM_RANGE(0x1000, 0x13ff) AM_NOP
 	AM_RANGE(0x1400, 0x1400) AM_MIRROR(0x03ff) AM_READ(jedi_audio_ack_latch_r) AM_WRITENOP
 	AM_RANGE(0x1800, 0x1800) AM_MIRROR(0x03ff) AM_READ(a2d_data_r) AM_WRITENOP
-	AM_RANGE(0x1c00, 0x1c01) AM_MIRROR(0x007f) AM_READNOP AM_WRITE(nvram_enable_w)
+	AM_RANGE(0x1c00, 0x1c01) AM_MIRROR(0x007e) AM_READNOP AM_WRITE(nvram_enable_w)
 	AM_RANGE(0x1c80, 0x1c82) AM_MIRROR(0x0078) AM_READNOP AM_WRITE(a2d_select_w)
 	AM_RANGE(0x1c83, 0x1c87) AM_MIRROR(0x0078) AM_NOP
 	AM_RANGE(0x1d00, 0x1d00) AM_MIRROR(0x007f) AM_NOP   /* write: NVRAM store */
-	AM_RANGE(0x1d80, 0x1d80) AM_MIRROR(0x007f) AM_READNOP AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x1d80, 0x1d80) AM_MIRROR(0x007f) AM_READNOP AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x1e00, 0x1e00) AM_MIRROR(0x007f) AM_READNOP AM_WRITE(main_irq_ack_w)
-	AM_RANGE(0x1e80, 0x1e81) AM_MIRROR(0x0078) AM_READNOP AM_WRITE(jedi_coin_counter_w)
-	AM_RANGE(0x1e82, 0x1e83) AM_MIRROR(0x0078) AM_NOP   /* write: LED control - not used */
-	AM_RANGE(0x1e84, 0x1e84) AM_MIRROR(0x0078) AM_READNOP AM_WRITEONLY AM_SHARE("foreground_bank")
-	AM_RANGE(0x1e85, 0x1e85) AM_MIRROR(0x0078) AM_NOP
-	AM_RANGE(0x1e86, 0x1e86) AM_MIRROR(0x0078) AM_READNOP AM_WRITE(jedi_audio_reset_w)
-	AM_RANGE(0x1e87, 0x1e87) AM_MIRROR(0x0078) AM_READNOP AM_WRITEONLY AM_SHARE("video_off")
+	AM_RANGE(0x1e80, 0x1e87) AM_MIRROR(0x0078) AM_READNOP AM_DEVWRITE("outlatch", ls259_device, write_d7)
 	AM_RANGE(0x1f00, 0x1f00) AM_MIRROR(0x007f) AM_READNOP AM_WRITE(jedi_audio_latch_w)
 	AM_RANGE(0x1f80, 0x1f80) AM_MIRROR(0x007f) AM_READNOP AM_WRITE(rom_banksel_w)
 	AM_RANGE(0x2000, 0x27ff) AM_RAM AM_SHARE("backgroundram")
@@ -314,7 +317,7 @@ static INPUT_PORTS_START( jedi )
 	PORT_BIT( 0x03, IP_ACTIVE_LOW,  IPT_UNUSED )
 	PORT_BIT( 0x04, IP_ACTIVE_HIGH, IPT_TILT )
 	PORT_BIT( 0x18, IP_ACTIVE_LOW,  IPT_UNUSED )
-	PORT_BIT( 0x60, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF,jedi_state,jedi_audio_comm_stat_r, NULL)
+	PORT_BIT( 0x60, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF,jedi_state,jedi_audio_comm_stat_r, nullptr)
 	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_CUSTOM ) PORT_VBLANK("screen")
 
 	PORT_START("STICKY")    /* analog Y */
@@ -332,7 +335,7 @@ INPUT_PORTS_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( jedi, jedi_state )
+static MACHINE_CONFIG_START( jedi )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, JEDI_MAIN_CPU_CLOCK)
@@ -341,6 +344,17 @@ static MACHINE_CONFIG_START( jedi, jedi_state )
 	MCFG_QUANTUM_TIME(attotime::from_hz(240))
 
 	MCFG_NVRAM_ADD_0FILL("nvram")
+
+	MCFG_DEVICE_ADD("outlatch", LS259, 0) // 14J
+	MCFG_ADDRESSABLE_LATCH_Q0_OUT_CB(WRITELINE(jedi_state, coin_counter_left_w))
+	MCFG_ADDRESSABLE_LATCH_Q1_OUT_CB(WRITELINE(jedi_state, coin_counter_right_w))
+	MCFG_ADDRESSABLE_LATCH_Q2_OUT_CB(NOOP) // LED control - not used
+	MCFG_ADDRESSABLE_LATCH_Q3_OUT_CB(NOOP) // LED control - not used
+	MCFG_ADDRESSABLE_LATCH_Q4_OUT_CB(WRITELINE(jedi_state, foreground_bank_w))
+	MCFG_ADDRESSABLE_LATCH_Q6_OUT_CB(WRITELINE(jedi_state, audio_reset_w))
+	MCFG_ADDRESSABLE_LATCH_Q7_OUT_CB(WRITELINE(jedi_state, video_off_w))
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_FRAGMENT_ADD(jedi_video)
@@ -395,4 +409,4 @@ ROM_END
  *
  *************************************/
 
-GAME( 1984, jedi, 0, jedi, jedi, driver_device, 0, ROT0, "Atari", "Return of the Jedi", MACHINE_SUPPORTS_SAVE )
+GAME( 1984, jedi, 0, jedi, jedi, jedi_state, 0, ROT0, "Atari", "Return of the Jedi", MACHINE_SUPPORTS_SAVE )

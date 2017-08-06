@@ -1,11 +1,15 @@
 // license:BSD-3-Clause
 // copyright-holders:Farfetch'd, David Haywood
+
 #ifndef __GSTRIKER_H
 #define __GSTRIKER_H
 
+#include "machine/gen_latch.h"
+#include "machine/mb3773.h"
 #include "video/vsystem_spr.h"
 #include "video/mb60553.h"
 #include "video/vs920a.h"
+#include "screen.h"
 
 
 
@@ -22,6 +26,8 @@ public:
 		m_gfxdecode(*this, "gfxdecode"),
 		m_screen(*this, "screen"),
 		m_palette(*this, "palette"),
+		m_soundlatch(*this, "soundlatch"),
+		m_watchdog(*this, "watchdog"),
 		m_CG10103_m_vram(*this, "cg10103_m_vram"),
 		m_work_ram(*this, "work_ram"),
 		m_mixerregs1(*this, "mixerregs1"),
@@ -36,29 +42,23 @@ public:
 	required_device<gfxdecode_device> m_gfxdecode;
 	required_device<screen_device> m_screen;
 	required_device<palette_device> m_palette;
+	required_device<generic_latch_8_device> m_soundlatch;
+	required_device<mb3773_device> m_watchdog;
 
-	required_shared_ptr<UINT16> m_CG10103_m_vram;
-	required_shared_ptr<UINT16> m_work_ram;
-	required_shared_ptr<UINT16> m_mixerregs1;
-	required_shared_ptr<UINT16> m_mixerregs2;
+	required_shared_ptr<uint16_t> m_CG10103_m_vram;
+	required_shared_ptr<uint16_t> m_work_ram;
+	required_shared_ptr<uint16_t> m_mixerregs1;
+	required_shared_ptr<uint16_t> m_mixerregs2;
 
-	UINT16 m_dmmy_8f_ret;
-	int m_pending_command;
 	int m_gametype;
-	UINT16 m_mcu_data;
-	UINT16 m_prot_reg[2];
+	uint16_t m_mcu_data;
+	uint16_t m_prot_reg[2];
 
 	// common
-	DECLARE_READ16_MEMBER(dmmy_8f);
-	DECLARE_WRITE16_MEMBER(sound_command_w);
-	DECLARE_WRITE8_MEMBER(sh_pending_command_clear_w);
 	DECLARE_WRITE8_MEMBER(sh_bankswitch_w);
 
 	// vgoalsoc and twrldc
-	DECLARE_WRITE16_MEMBER(twrldc94_mcu_w);
-	DECLARE_READ16_MEMBER(twrldc94_mcu_r);
-	DECLARE_WRITE16_MEMBER(twrldc94_prot_reg_w);
-	DECLARE_READ16_MEMBER(twrldc94_prot_reg_r);
+	DECLARE_WRITE8_MEMBER(twrldc94_prot_reg_w);
 
 	// vgoalsoc only
 	DECLARE_READ16_MEMBER(vbl_toggle_r);
@@ -70,7 +70,7 @@ public:
 	DECLARE_DRIVER_INIT(vgoalsoc);
 	DECLARE_DRIVER_INIT(twrldc94);
 
-	UINT32 screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update(screen_device &screen, bitmap_ind16 &bitmap, const rectangle &cliprect);
 
 	void mcu_init();
 };

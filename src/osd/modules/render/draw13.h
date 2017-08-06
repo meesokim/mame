@@ -10,8 +10,8 @@
 
 #pragma once
 
-#ifndef __DRAW13__
-#define __DRAW13__
+#ifndef __DRAW20__
+#define __DRAW20__
 
 // OSD headers
 #ifndef OSD_WINDOWS
@@ -19,11 +19,11 @@
 #include "window.h"
 #else
 #include "../windows/window.h"
-typedef UINT64 HashT;
+typedef uint64_t HashT;
 #endif
 
 // standard SDL headers
-#include "sdl/sdlinc.h"
+#include <SDL2/SDL.h>
 
 struct quad_setup_data
 {
@@ -41,16 +41,16 @@ struct quad_setup_data
 
 	void compute(const render_primitive &prim, const int prescale);
 
-	INT32   dudx, dvdx, dudy, dvdy;
-	INT32   startu, startv;
-	INT32   rotwidth, rotheight;
+	int32_t   dudx, dvdx, dudy, dvdy;
+	int32_t   startu, startv;
+	int32_t   rotwidth, rotheight;
 };
 
 //============================================================
 //  Textures
 //============================================================
 
-class renderer_sdl1;
+class renderer_sdl2;
 struct copy_info_t;
 
 /* texture_info holds information about a texture */
@@ -58,10 +58,10 @@ class texture_info
 {
 	friend class simple_list<texture_info>;
 public:
-	texture_info(renderer_sdl1 *renderer, const render_texinfo &texsource, const quad_setup_data &setup, const UINT32 flags);
+	texture_info(renderer_sdl2 *renderer, const render_texinfo &texsource, const quad_setup_data &setup, const uint32_t flags);
 	~texture_info();
 
-	void set_data(const render_texinfo &texsource, const UINT32 flags);
+	void set_data(const render_texinfo &texsource, const uint32_t flags);
 	void render_quad(const render_primitive &prim, const int x, const int y);
 	bool matches(const render_primitive &prim, const quad_setup_data &setup);
 
@@ -83,7 +83,7 @@ public:
 	render_texinfo &texinfo() { return m_texinfo; }
 
 	HashT hash() const { return m_hash; }
-	UINT32 flags() const { return m_flags; }
+	uint32_t flags() const { return m_flags; }
 	// FIXME:
 	bool is_pixels_owned() const;
 
@@ -91,10 +91,10 @@ private:
 	void set_coloralphamode(SDL_Texture *texture_id, const render_color *color);
 
 	Uint32              m_sdl_access;
-	renderer_sdl1 *     m_renderer;
+	renderer_sdl2 *     m_renderer;
 	render_texinfo      m_texinfo;            // copy of the texture info
 	HashT               m_hash;               // hash value for the texture (must be >= pointer size)
-	UINT32              m_flags;              // rendering flags
+	uint32_t              m_flags;              // rendering flags
 
 	SDL_Texture *       m_texture_id;
 	bool                m_is_rotated;
@@ -137,8 +137,8 @@ struct copy_info_t
 	const char          *srcname;
 	const char          *dstname;
 	/* Statistics */
-	UINT64              pixel_count;
-	INT64               time;
+	uint64_t              pixel_count;
+	int64_t               time;
 	int                 samples;
 	int                 perf;
 	/* list */
@@ -146,19 +146,19 @@ struct copy_info_t
 };
 
 /* sdl_info is the information about SDL for the current screen */
-class renderer_sdl1 : public osd_renderer
+class renderer_sdl2 : public osd_renderer
 {
 public:
-	renderer_sdl1(osd_window *window, int extra_flags);
+	renderer_sdl2(std::shared_ptr<osd_window> window, int extra_flags);
 
-	virtual ~renderer_sdl1()
+	virtual ~renderer_sdl2()
 	{
 		destroy_all_textures();
 		SDL_DestroyRenderer(m_sdl_renderer);
 		m_sdl_renderer = nullptr;
 	}
 
-	static bool init(running_machine &machine);
+	static void init(running_machine &machine);
 	static void exit();
 
 	virtual int create() override;
@@ -183,7 +183,7 @@ private:
 
 	void destroy_all_textures();
 
-	INT32           m_blittimer;
+	int32_t           m_blittimer;
 
 
 	simple_list<texture_info>  m_texlist;                // list of active textures
@@ -203,11 +203,11 @@ private:
 	} fmt_support[30];
 
 	// Stats
-	INT64           m_last_blit_time;
-	INT64           m_last_blit_pixels;
+	int64_t           m_last_blit_time;
+	int64_t           m_last_blit_pixels;
 
 	static bool s_blit_info_initialized;
 	static const copy_info_t s_blit_info_default[];
 };
 
-#endif // __DRAW13__
+#endif // __DRAW20__

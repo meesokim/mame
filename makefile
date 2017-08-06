@@ -15,6 +15,7 @@
 # REGENIE = 1
 # VERBOSE = 1
 # NOWERROR = 1
+# IGNORE_GIT = 1
 
 # TARGET = mame
 # SUBTARGET = tiny
@@ -30,6 +31,7 @@
 # SDL_INI_PATH = .;$HOME/.mame/;ini;
 # SDL2_MULTIAPI = 1
 # NO_USE_MIDI = 1
+# NO_USE_PORTAUDIO = 1
 # DONT_USE_NETWORK = 1
 # USE_QTDEBUG = 1
 # NO_X11 = 1
@@ -61,8 +63,8 @@
 # USE_SYSTEM_LIB_SQLITE3 = 1
 # USE_SYSTEM_LIB_PORTMIDI = 1
 # USE_SYSTEM_LIB_PORTAUDIO = 1
-# USE_SYSTEM_LIB_UV = 1
 # USE_BUNDLED_LIB_SDL2 = 1
+# USE_SYSTEM_LIB_UTF8PROC = 1
 
 # MESA_INSTALL_ROOT = /opt/mesa
 # SDL_INSTALL_ROOT = /opt/sdl2
@@ -96,9 +98,11 @@
 # FORCE_VERSION_COMPILE = 1
 
 # MSBUILD = 1
-# USE_LIBUV = 1
 # IGNORE_BAD_LOCALISATION=1
 # PRECOMPILE = 0
+
+# DEBUG_DIR=c:\test\location
+# DEBUG_ARGS= -window -video bgfx
 
 ifdef PREFIX_MAKEFILE
 include $(PREFIX_MAKEFILE)
@@ -109,6 +113,11 @@ endif
 ###########################################################################
 ##################   END USER-CONFIGURABLE OPTIONS   ######################
 ###########################################################################
+
+
+ifndef MAKETYPE
+MAKETYPE := gmake
+endif
 
 MAKEPARAMS := -R
 
@@ -128,25 +137,36 @@ GENIEOS := linux
 PLATFORM := unknown
 ifneq ($(filter x86_64,$(UNAME_P)),)
 PLATFORM := x86
-endif 
+endif
 ifneq ($(filter %86,$(UNAME_P)),)
 PLATFORM := x86
-endif 
+endif
+ifneq ($(filter alpha,$(UNAME_M)),)
+PLATFORM := alpha
+endif
+ifneq ($(filter alpha,$(UNAME_P)),)
+PLATFORM := alpha
+endif
 ifneq ($(filter arm%,$(UNAME_M)),)
 PLATFORM := arm
-endif 
+endif
 ifneq ($(filter arm%,$(UNAME_P)),)
 PLATFORM := arm
-endif 
+endif
 ifneq ($(filter aarch64%,$(UNAME_M)),)
 PLATFORM := arm64
-endif 
+endif
 ifneq ($(filter aarch64%,$(UNAME_P)),)
 PLATFORM := arm64
-endif 
+endif
 ifneq ($(filter powerpc,$(UNAME_P)),)
 PLATFORM := powerpc
-endif 
+endif
+ifneq ($(filter mips64%,$(UNAME_M)),)
+ifeq ($(shell getconf LONG_BIT),64)
+PLATFORM := mips64
+endif
+endif
 ifeq ($(firstword $(filter Linux,$(UNAME))),Linux)
 OS := linux
 endif
@@ -160,19 +180,19 @@ GENIEOS := solaris
 endif
 ifeq ($(firstword $(filter FreeBSD,$(UNAME))),FreeBSD)
 OS := freebsd
-GENIEOS := bsd
+GENIEOS := freebsd
 endif
 ifeq ($(firstword $(filter GNU/kFreeBSD,$(UNAME))),GNU/kFreeBSD)
 OS := freebsd
-GENIEOS := bsd
+GENIEOS := freebsd
 endif
 ifeq ($(firstword $(filter NetBSD,$(UNAME))),NetBSD)
 OS := netbsd
-GENIEOS := bsd
+GENIEOS := freebsd
 endif
 ifeq ($(firstword $(filter OpenBSD,$(UNAME))),OpenBSD)
 OS := openbsd
-GENIEOS := bsd
+GENIEOS := freebsd
 endif
 ifeq ($(firstword $(filter Darwin,$(UNAME))),Darwin)
 OS := macosx
@@ -199,6 +219,10 @@ endif
 # build scripts will be run from
 # scripts/target/$(TARGET)/$(SUBTARGET).lua
 #-------------------------------------------------
+ifdef PROJECT
+PARAMS += --PROJECT='$(PROJECT)'
+TARGET := $(PROJECT)
+endif
 
 ifndef TARGET
 TARGET := mame
@@ -208,9 +232,14 @@ ifndef SUBTARGET
 SUBTARGET := $(TARGET)
 endif
 
+SUBTARGET_FULL := $(subst -,_,$(SUBTARGET))
+
+
 CONFIG = release
 ifdef DEBUG
+ifneq '$(DEBUG)' '0'
 CONFIG := debug
+endif
 endif
 
 ifdef VERBOSE
@@ -259,6 +288,12 @@ endif
 ifeq ($(firstword $(filter ppc64,$(UNAME))),ppc64)
 ARCHITECTURE := _x64
 endif
+ifeq ($(firstword $(filter ppc64le,$(UNAME))),ppc64le)
+ARCHITECTURE := _x64
+endif
+ifeq ($(firstword $(filter s390x,$(UNAME))),s390x)
+ARCHITECTURE := _x64
+endif
 endif
 
 else
@@ -304,6 +339,12 @@ ifndef NOASM
 endif
 endif
 
+ifeq ($(findstring s390x,$(UNAME)),s390x)
+ifndef NOASM
+	NOASM := 1
+endif
+endif
+
 # Emscripten
 ifeq ($(findstring emcc,$(CC)),emcc)
 TARGETOS := asmjs
@@ -321,6 +362,13 @@ BIGENDIAN := 1
 endif
 # Linux
 ifneq (,$(findstring ppc,$(UNAME)))
+ifneq (,$(findstring ppc64le,$(UNAME)))
+BIGENDIAN := 0
+else
+BIGENDIAN := 1
+endif
+endif
+ifneq (,$(findstring s390x,$(UNAME)))
 BIGENDIAN := 1
 endif
 endif # BIGENDIAN
@@ -342,7 +390,7 @@ CXX:= $(SILENT)g++
 
 ifndef OSD
 
-OSD := osdmini
+OSD := sdl
 
 ifeq ($(TARGETOS),windows)
 OSD := windows
@@ -357,6 +405,10 @@ OSD := sdl
 endif
 
 ifeq ($(TARGETOS),netbsd)
+OSD := sdl
+endif
+
+ifeq ($(TARGETOS),openbsd)
 OSD := sdl
 endif
 
@@ -409,14 +461,14 @@ ifdef USE_SYSTEM_LIB_PORTAUDIO
 PARAMS += --with-system-portaudio='$(USE_SYSTEM_LIB_PORTAUDIO)'
 endif
 
+ifdef USE_SYSTEM_LIB_UTF8PROC
+PARAMS += --with-system-utf8proc='$(USE_SYSTEM_LIB_UTF8PROC)'
+endif
+
 # reverse logic for this one
 
 ifdef USE_BUNDLED_LIB_SDL2
 PARAMS += --with-bundled-sdl2
-endif
-
-ifdef USE_SYSTEM_LIB_UV
-PARAMS += --with-system-uv='$(USE_SYSTEM_LIB_UV)'
 endif
 
 #-------------------------------------------------
@@ -467,8 +519,10 @@ endif
 
 # profiler defaults to on for DEBUG builds
 ifdef DEBUG
+ifneq '$(DEBUG)' '0'
 ifndef PROFILER
 PROFILER = 1
+endif
 endif
 endif
 
@@ -477,9 +531,6 @@ endif
 ifdef PROFILE
 PROFILER =
 SYMBOLS = 1
-ifndef SYMLEVEL
-SYMLEVEL = 1
-endif
 endif
 
 # specify a default optimization level if none explicitly stated
@@ -489,28 +540,34 @@ endif
 
 # set the symbols level
 ifdef SYMBOLS
+PARAMS += --SYMBOLS='$(SYMBOLS)'
+ifneq '$(SYMBOLS)' '0'
 ifndef SYMLEVEL
-SYMLEVEL = 1
 ifdef SOURCES
 SYMLEVEL = 2
+else
+SYMLEVEL = 1
+endif
 endif
 endif
 endif
 
 ifdef TOOLS
+ifneq '$(TOOLS)' '0'
 PARAMS += --with-tools
+endif
 endif
 
 ifdef TESTS
+ifneq '$(TESTS)' '0'
 PARAMS += --with-tests
+endif
 endif
 
 ifdef BENCHMARKS
+ifneq '$(BENCHMARKS)' '0'
 PARAMS += --with-benchmarks
 endif
-
-ifdef SYMBOLS
-PARAMS += --SYMBOLS='$(SYMBOLS)'
 endif
 
 ifdef SYMLEVEL
@@ -545,10 +602,6 @@ ifdef MAP
 PARAMS += --MAP='$(MAP)'
 endif
 
-ifdef USE_BGFX
-PARAMS += --USE_BGFX='$(USE_BGFX)'
-endif
-
 ifdef NOASM
 TARGET_PARAMS += --NOASM='$(NOASM)'
 endif
@@ -569,8 +622,8 @@ ifdef TARGET
 PARAMS += --target='$(TARGET)'
 endif
 
-ifdef SUBTARGET
-PARAMS += --subtarget='$(SUBTARGET)'
+ifdef SUBTARGET_FULL
+PARAMS += --subtarget='$(SUBTARGET_FULL)'
 endif
 
 ifdef OSD
@@ -595,6 +648,10 @@ endif
 
 ifdef NO_USE_MIDI
 PARAMS += --NO_USE_MIDI='$(NO_USE_MIDI)'
+endif
+
+ifdef NO_USE_PORTAUDIO
+PARAMS += --NO_USE_PORTAUDIO='$(NO_USE_PORTAUDIO)'
 endif
 
 ifdef USE_QTDEBUG
@@ -709,14 +766,21 @@ ifdef PLATFORM
 TARGET_PARAMS += --PLATFORM='$(PLATFORM)'
 endif
 
-ifdef USE_LIBUV
-PARAMS += --USE_LIBUV='$(USE_LIBUV)'
-endif
-
 ifdef PRECOMPILE
 PARAMS += --precompile='$(PRECOMPILE)'
 endif
 
+ifdef DEBUG_DIR
+PARAMS += --DEBUG_DIR='$(DEBUG_DIR)'
+endif
+
+ifdef DEBUG_ARGS
+PARAMS += --DEBUG_ARGS='$(DEBUG_ARGS)'
+endif
+
+ifdef WEBASSEMBLY
+PARAMS += --WEBASSEMBLY='$(WEBASSEMBLY)'
+endif
 #-------------------------------------------------
 # All scripts
 #-------------------------------------------------
@@ -729,6 +793,7 @@ SCRIPTS = scripts/genie.lua \
 	scripts/src/main.lua \
 	scripts/src/3rdparty.lua \
 	scripts/src/cpu.lua \
+	scripts/src/mame/frontend.lua \
 	scripts/src/osd/modules.lua \
 	$(wildcard scripts/src/osd/$(OSD)*.lua) \
 	scripts/src/sound.lua \
@@ -738,18 +803,23 @@ SCRIPTS = scripts/genie.lua \
 	scripts/src/video.lua \
 	scripts/src/bus.lua \
 	scripts/src/netlist.lua \
+	scripts/src/formats.lua \
 	scripts/toolchain.lua \
 	scripts/src/osd/modules.lua \
 	$(wildcard src/osd/$(OSD)/$(OSD).mak) \
-	$(wildcard src/$(TARGET)/$(SUBTARGET).mak)
+	$(wildcard src/$(TARGET)/$(SUBTARGET_FULL).mak)
 
-ifeq ($(SUBTARGET),mame)
+ifeq ($(SUBTARGET_FULL),mame)
 SCRIPTS += scripts/target/$(TARGET)/arcade.lua
 SCRIPTS += scripts/target/$(TARGET)/mess.lua
 endif
 
 ifndef SOURCES
-SCRIPTS += scripts/target/$(TARGET)/$(SUBTARGET).lua
+ifdef PROJECT
+SCRIPTS += projects/$(PROJECT)/scripts/target/$(TARGET)/$(SUBTARGET_FULL).lua
+else
+SCRIPTS += scripts/target/$(TARGET)/$(SUBTARGET_FULL).lua
+endif
 endif
 
 ifdef REGENIE
@@ -793,12 +863,12 @@ SRC = src
 
 # all 3rd party sources are under the 3rdparty/ directory
 3RDPARTY = 3rdparty
-ifeq ($(SUBTARGET),mame)
-PROJECT_NAME := $(SUBTARGET)
-else ifeq ($(SUBTARGET),mess)
-PROJECT_NAME := $(SUBTARGET)
+ifeq ($(SUBTARGET_FULL),mame)
+PROJECT_NAME := $(SUBTARGET_FULL)
+else ifeq ($(SUBTARGET_FULL),mess)
+PROJECT_NAME := $(SUBTARGET_FULL)
 else
-PROJECT_NAME := $(TARGET)$(SUBTARGET)
+PROJECT_NAME := $(TARGET)$(SUBTARGET_FULL)
 endif
 
 
@@ -807,10 +877,12 @@ ifeq (posix,$(SHELLTYPE))
 GCC_VERSION      := $(shell $(TOOLCHAIN)$(subst @,,$(CC)) -dumpversion 2> /dev/null)
 CLANG_VERSION    := $(shell $(TOOLCHAIN)$(subst @,,$(CC)) --version 2> /dev/null| head -n 1 | grep clang | sed "s/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$$/\1/" | head -n 1)
 PYTHON_AVAILABLE := $(shell $(PYTHON) --version > /dev/null 2>&1 && echo python)
+GIT_AVAILABLE    := $(shell git --version > /dev/null 2>&1 && echo git)
 else
 GCC_VERSION      := $(shell $(TOOLCHAIN)$(subst @,,$(CC)) -dumpversion 2> NUL)
 CLANG_VERSION    := $(shell $(TOOLCHAIN)$(subst @,,$(CC)) --version 2> NUL| head -n 1 | grep clang | sed "s/^.*[^0-9]\([0-9]*\.[0-9]*\.[0-9]*\).*$$/\1/" | head -n 1)
 PYTHON_AVAILABLE := $(shell $(PYTHON) --version > NUL 2>&1 && echo python)
+GIT_AVAILABLE    := $(shell git --version > NUL 2>&1 && echo git)
 endif
 ifdef MSBUILD
 MSBUILD_PARAMS   := /v:minimal /m:$(NUMBER_OF_PROCESSORS)
@@ -824,6 +896,22 @@ MSBUILD_PARAMS += /p:Platform=x64
 else
 MSBUILD_PARAMS += /p:Platform=win32
 endif
+ifeq (posix,$(SHELLTYPE))
+MSBUILD_PARAMS := $(subst /,-,$(MSBUILD_PARAMS))
+endif
+endif
+ifdef FASTBUILD
+FASTBUILD_PARAMS := -j$(NUMBER_OF_PROCESSORS)
+ifeq ($(CONFIG),debug)
+FASTBUILD_TARGET := all-Debug
+else
+FASTBUILD_TARGET := all-Release
+endif
+ifeq ($(ARCHITECTURE),_x64)
+FASTBUILD_PARAMS += $(FASTBUILD_TARGET)-x64
+else
+FASTBUILD_PARAMS += $(FASTBUILD_TARGET)-x32
+endif
 endif
 else
 GCC_VERSION      := $(shell $(TOOLCHAIN)$(subst @,,$(CC)) -dumpversion 2> /dev/null)
@@ -831,6 +919,7 @@ ifneq ($(OS),solaris)
 CLANG_VERSION    := $(shell $(TOOLCHAIN)$(subst @,,$(CC))  --version  2> /dev/null | head -n 1 | grep -e 'version [0-9]\.[0-9]\(\.[0-9]\)\?' -o | grep -e '[0-9]\.[0-9]\(\.[0-9]\)\?' -o | tail -n 1)
 endif
 PYTHON_AVAILABLE := $(shell $(PYTHON) --version > /dev/null 2>&1 && echo python)
+GIT_AVAILABLE := $(shell git --version > /dev/null 2>&1 && echo git)
 endif
 
 ifeq ($(CLANG_VERSION),)
@@ -850,15 +939,35 @@ ifneq ($(PYTHON_AVAILABLE),python)
 $(error Python is not available in path)
 endif
 
+ifneq ($(GIT_AVAILABLE),git)
+	IGNORE_GIT := 1
+endif
+ifeq ($(wildcard .git/*),)
+	IGNORE_GIT := 1
+endif
+
+ifeq (posix,$(SHELLTYPE))
+OLD_GIT_VERSION := $(shell cat $(GENDIR)/git_desc 2> /dev/null)
+else
+OLD_GIT_VERSION := $(shell cat $(GENDIR)/git_desc 2> NUL)
+endif
+ifneq ($(IGNORE_GIT),1)
+NEW_GIT_VERSION := $(shell git describe --dirty)
+else
+NEW_GIT_VERSION := unknown
+endif
+ifeq ($(NEW_GIT_VERSION),)
+NEW_GIT_VERSION := unknown
+endif
+
 GENIE := 3rdparty/genie/bin/$(GENIEOS)/genie$(EXE)
 
-ifeq ($(TARGET),$(SUBTARGET))
+ifeq ($(TARGET),$(SUBTARGET_FULL))
 FULLTARGET := $(TARGET)
 else
-FULLTARGET := $(TARGET)$(SUBTARGET)
+FULLTARGET := $(TARGET)$(SUBTARGET_FULL)
 endif
 PROJECTDIR := $(BUILDDIR)/projects/$(OSD)/$(FULLTARGET)
-PROJECTDIR_MINI := $(BUILDDIR)/projects/osdmini/$(FULLTARGET)
 PROJECTDIR_SDL := $(BUILDDIR)/projects/sdl/$(FULLTARGET)
 PROJECTDIR_WIN := $(BUILDDIR)/projects/windows/$(FULLTARGET)
 
@@ -870,19 +979,19 @@ regenie:
 # gmake-mingw64-gcc
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-mingw64-gcc/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR)/$(MAKETYPE)-mingw64-gcc/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef MINGW64
 	$(error MINGW64 is not set)
 endif
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=mingw64-gcc --gcc_version=$(GCC_VERSION) gmake
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=mingw64-gcc --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: windows_x64
-windows_x64: generate $(PROJECTDIR)/gmake-mingw64-gcc/Makefile
+windows_x64: generate $(PROJECTDIR)/$(MAKETYPE)-mingw64-gcc/Makefile
 ifndef MINGW64
 	$(error MINGW64 is not set)
 endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw64-gcc config=$(CONFIG)64 WINDRES=$(WINDRES) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw64-gcc config=$(CONFIG)64 WINDRES=$(WINDRES) 
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw64-gcc config=$(CONFIG)64 WINDRES=$(WINDRES) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw64-gcc config=$(CONFIG)64 WINDRES=$(WINDRES)
 
 #-------------------------------------------------
 # gmake-mingw32-gcc
@@ -891,61 +1000,36 @@ endif
 .PHONY: windows
 windows: windows_x86
 
-$(PROJECTDIR)/gmake-mingw32-gcc/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR)/$(MAKETYPE)-mingw32-gcc/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef MINGW32
 	$(error MINGW32 is not set)
 endif
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=mingw32-gcc --gcc_version=$(GCC_VERSION) gmake
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=mingw32-gcc --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: windows_x86
-windows_x86: generate $(PROJECTDIR)/gmake-mingw32-gcc/Makefile
+windows_x86: generate $(PROJECTDIR)/$(MAKETYPE)-mingw32-gcc/Makefile
 ifndef MINGW32
 	$(error MINGW32 is not set)
 endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw32-gcc config=$(CONFIG)32 WINDRES=$(WINDRES) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw32-gcc config=$(CONFIG)32 WINDRES=$(WINDRES)
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw32-gcc config=$(CONFIG)32 WINDRES=$(WINDRES) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw32-gcc config=$(CONFIG)32 WINDRES=$(WINDRES)
 
 #-------------------------------------------------
 # gmake-mingw-clang
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-mingw-clang/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=mingw-clang --gcc_version=$(CLANG_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-mingw-clang/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=mingw-clang --gcc_version=$(CLANG_VERSION) $(MAKETYPE)
 
 .PHONY: windows_x64_clang
-windows_x64_clang: generate $(PROJECTDIR)/gmake-mingw-clang/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw-clang config=$(CONFIG)64 WINDRES=$(WINDRES) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw-clang config=$(CONFIG)64 WINDRES=$(WINDRES)
+windows_x64_clang: generate $(PROJECTDIR)/$(MAKETYPE)-mingw-clang/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw-clang config=$(CONFIG)64 WINDRES=$(WINDRES) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw-clang config=$(CONFIG)64 WINDRES=$(WINDRES)
 
 .PHONY: windows_x86_clang
-windows_x86_clang: generate $(PROJECTDIR)/gmake-mingw-clang/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw-clang config=$(CONFIG)32 WINDRES=$(WINDRES) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-mingw-clang config=$(CONFIG)32 WINDRES=$(WINDRES)
-
-#-------------------------------------------------
-# Visual Studio 2013
-#-------------------------------------------------
-
-.PHONY: vs2013
-vs2013: generate
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) vs2013
-ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2013/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
-endif
-
-.PHONY: vs2013_intel
-vs2013_intel: generate
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=intel-15 vs2013
-ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2013-intel/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
-endif
-
-.PHONY: vs2013_xp
-vs2013_xp: generate
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=vs2013-xp vs2013
-ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2013-xp/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
-endif
+windows_x86_clang: generate $(PROJECTDIR)/$(MAKETYPE)-mingw-clang/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw-clang config=$(CONFIG)32 WINDRES=$(WINDRES) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-mingw-clang config=$(CONFIG)32 WINDRES=$(WINDRES)
 
 #-------------------------------------------------
 # Visual Studio 2015
@@ -955,285 +1039,272 @@ endif
 vs2015: generate
 	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) vs2015
 ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2015/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2015/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
 endif
 
 .PHONY: vs2015_intel
 vs2015_intel: generate
 	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=intel-15 vs2015
 ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2015-intel/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2015-intel/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
 endif
 
 .PHONY: vs2015_xp
 vs2015_xp: generate
 	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=vs2015-xp vs2015
 ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2015-xp/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2015-xp/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
 endif
 
 .PHONY: vs2015_uwp
 vs2015_uwp: generate
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=winstore82 --osd=windows --NO_USE_MIDI=1 --USE_LIBUV=0 --NO_OPENGL=1 --USE_QTDEBUG=0 --MODERN_WIN_API=1 vs2015
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=winstore82 --osd=uwp --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_USE_PORTAUDIO=1 --MODERN_WIN_API=1 vs2015
 ifdef MSBUILD
-	$(SILENT) msbuild $(PROJECTDIR_WIN)/vs2015-winstore82/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2015-winstore82/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+endif
+
+.PHONY: vs2015_fastbuild
+vs2015_fastbuild: generate
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) vs2015-fastbuild
+ifdef FASTBUILD
+	$(SILENT) fbuild.exe -config $(PROJECTDIR_WIN)/vs2015-fastbuild/ftbuild.bff $(FASTBUILD_PARAMS)
+endif
+
+#-------------------------------------------------
+# Visual Studio 2017
+#-------------------------------------------------
+
+.PHONY: vs2017
+vs2017: generate
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) vs2017
+ifdef MSBUILD
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2017/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+endif
+
+.PHONY: vs2017_intel
+vs2017_intel: generate
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=intel-15 vs2017
+ifdef MSBUILD
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2017-intel/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+endif
+
+.PHONY: vs2017_xp
+vs2017_xp: generate
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=vs2017-xp vs2017
+ifdef MSBUILD
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2017-xp/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+endif
+
+.PHONY: vs2017_uwp
+vs2017_uwp: generate
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --vs=winstore82 --osd=uwp --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_USE_PORTAUDIO=1 --MODERN_WIN_API=1 vs2015
+ifdef MSBUILD
+	$(SILENT) msbuild.exe $(PROJECTDIR_WIN)/vs2017-winstore82/$(PROJECT_NAME).sln $(MSBUILD_PARAMS)
+endif
+
+.PHONY: vs2017_fastbuild
+vs2017_fastbuild: generate
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) vs2017-fastbuild
+ifdef FASTBUILD
+	$(SILENT) fbuild.exe -config $(PROJECTDIR_WIN)/vs2017-fastbuild/ftbuild.bff $(FASTBUILD_PARAMS)
+endif
+
+#-------------------------------------------------
+# android-ndk
+#-------------------------------------------------
+
+.PHONY: android-ndk
+android-ndk:
+ifndef ANDROID_NDK_LLVM
+	$(error ANDROID_NDK_LLVM is not set)
+endif
+ifndef ANDROID_NDK_ROOT
+	$(error ANDROID_NDK_ROOT is not set)
 endif
 
 #-------------------------------------------------
 # android-arm
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-android-arm/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef ANDROID_NDK_ARM
 	$(error ANDROID_NDK_ARM is not set)
 endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-arm --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=arm --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 gmake
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-arm --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=arm --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 $(MAKETYPE)
 
 .PHONY: android-arm
-android-arm: generate $(PROJECTDIR_SDL)/gmake-android-arm/Makefile
-ifndef ANDROID_NDK_ARM
-	$(error ANDROID_NDK_ARM is not set)
-endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif	
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-arm config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-arm config=$(CONFIG)
+android-arm: android-ndk generate $(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm config=$(CONFIG)
 
 #-------------------------------------------------
 # android-arm64
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-android-arm64/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm64/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef ANDROID_NDK_ARM64
 	$(error ANDROID_NDK_ARM64 is not set)
 endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-arm64 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=arm64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 gmake
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-arm64 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=arm64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 $(MAKETYPE)
 
 .PHONY: android-arm64
-android-arm64: generate $(PROJECTDIR_SDL)/gmake-android-arm64/Makefile
-ifndef ANDROID_NDK_ARM64
-	$(error ANDROID_NDK_ARM64 is not set)
-endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif	
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-arm64 config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-arm64 config=$(CONFIG)
+android-arm64: android-ndk generate $(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm64/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm64 config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-arm64 config=$(CONFIG)
 
 #-------------------------------------------------
 # android-mips
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-android-mips/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef ANDROID_NDK_MIPS
 	$(error ANDROID_NDK_MIPS is not set)
 endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-mips --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=mips --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 gmake
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-mips --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=mips --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 $(MAKETYPE)
 
 .PHONY: android-mips
-android-mips: generate $(PROJECTDIR_SDL)/gmake-android-mips/Makefile
-ifndef ANDROID_NDK_MIPS
-	$(error ANDROID_NDK_MIPS is not set)
-endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-mips config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-mips config=$(CONFIG)
+android-mips: android-ndk generate $(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips config=$(CONFIG)
 
 #-------------------------------------------------
 # android-mips64
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-android-mips64/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips64/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef ANDROID_NDK_MIPS64
 	$(error ANDROID_NDK_MIPS64 is not set)
 endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-mips64 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=mips64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 gmake
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-mips64 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=mips64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 --NOASM=1 $(MAKETYPE)
 
 .PHONY: android-mips64
-android-mips64: generate $(PROJECTDIR_SDL)/gmake-android-mips64/Makefile
-ifndef ANDROID_NDK_MIPS64
-	$(error ANDROID_NDK_MIPS64 is not set)
-endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-mips64 config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-mips64 config=$(CONFIG)
+android-mips64: android-ndk generate $(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips64/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips64 config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-mips64 config=$(CONFIG)
 
 #-------------------------------------------------
 # android-x86
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-android-x86/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-android-x86/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef ANDROID_NDK_X86
 	$(error ANDROID_NDK_X86 is not set)
 endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-x86 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=x86 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 gmake
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-x86 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=x86 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 $(MAKETYPE)
 
 .PHONY: android-x86
-android-x86: generate $(PROJECTDIR_SDL)/gmake-android-x86/Makefile
-ifndef ANDROID_NDK_X86
-	$(error ANDROID_NDK_X86 is not set)
-endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-x86 config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-x86 config=$(CONFIG)
+android-x86: android-ndk generate $(PROJECTDIR_SDL)/$(MAKETYPE)-android-x86/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-x86 config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-x86 config=$(CONFIG)
 
 #-------------------------------------------------
 # android-x64
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-android-x64/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-android-x64/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef ANDROID_NDK_X64
 	$(error ANDROID_NDK_X64 is not set)
 endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-x64 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=x64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 gmake
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=android-x64 --gcc_version=3.8.0 --osd=sdl --targetos=android --PLATFORM=x64 --NO_USE_MIDI=1 --NO_OPENGL=1 --USE_QTDEBUG=0 --NO_X11=1 --DONT_USE_NETWORK=1 $(MAKETYPE)
 
 .PHONY: android-x64
-android-x64: generate $(PROJECTDIR_SDL)/gmake-android-x64/Makefile
-ifndef ANDROID_NDK_X64
-	$(error ANDROID_NDK_X64 is not set)
-endif
-ifndef ANDROID_NDK_ROOT
-	$(error ANDROID_NDK_ROOT is not set)
-endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-x64 config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-android-x64 config=$(CONFIG)
+android-x64: android-ndk generate $(PROJECTDIR_SDL)/$(MAKETYPE)-android-x64/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-x64 config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-android-x64 config=$(CONFIG)
 
 #-------------------------------------------------
 # asmjs / Emscripten
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-asmjs/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR)/$(MAKETYPE)-asmjs/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef EMSCRIPTEN
 	$(error EMSCRIPTEN is not set)
 endif
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=asmjs --gcc_version=3.7.0 gmake
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=asmjs --gcc_version=3.7.0 $(MAKETYPE)
 
 .PHONY: asmjs
-asmjs: generate $(PROJECTDIR)/gmake-asmjs/Makefile
+asmjs: generate $(PROJECTDIR)/$(MAKETYPE)-asmjs/Makefile
 ifndef EMSCRIPTEN
 	$(error EMSCRIPTEN is not set)
 endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-asmjs config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-asmjs config=$(CONFIG)
-
-#-------------------------------------------------
-# PNaCl
-#-------------------------------------------------
-
-$(PROJECTDIR_MINI)/gmake-pnacl/Makefile: makefile $(SCRIPTS) $(GENIE)
-ifndef NACL_SDK_ROOT
-	$(error NACL_SDK_ROOT is not set)
-endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=pnacl --gcc_version=3.7.0 --osd=osdmini --targetos=pnacl --NOASM=1 --USE_LIBUV=0 gmake
-
-.PHONY: pnacl
-pnacl: generate $(PROJECTDIR_MINI)/gmake-pnacl/Makefile
-ifndef NACL_SDK_ROOT
-	$(error NACL_SDK_ROOT is not set)
-endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_MINI)/gmake-pnacl config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_MINI)/gmake-pnacl config=$(CONFIG)
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-asmjs config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-asmjs config=$(CONFIG)
 
 #-------------------------------------------------
 # gmake-linux
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-linux/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=linux-gcc --gcc_version=$(GCC_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-linux/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=linux-gcc --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: linux_x64
-linux_x64: generate $(PROJECTDIR)/gmake-linux/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux config=$(CONFIG)64
+linux_x64: generate $(PROJECTDIR)/$(MAKETYPE)-linux/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux config=$(CONFIG)64
 
 .PHONY: linux_x86
-linux_x86: generate $(PROJECTDIR)/gmake-linux/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux config=$(CONFIG)32
+linux_x86: generate $(PROJECTDIR)/$(MAKETYPE)-linux/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux config=$(CONFIG)32
 
 .PHONY: linux
-linux: generate $(PROJECTDIR)/gmake-linux/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux config=$(CONFIG)
+linux: generate $(PROJECTDIR)/$(MAKETYPE)-linux/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux config=$(CONFIG)
 
 #-------------------------------------------------
 # gmake-linux-clang
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-linux-clang/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=linux-clang --gcc_version=$(CLANG_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-linux-clang/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=linux-clang --gcc_version=$(CLANG_VERSION) $(MAKETYPE)
 
 .PHONY: linux_x64_clang
-linux_x64_clang: generate $(PROJECTDIR)/gmake-linux-clang/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux-clang config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux-clang config=$(CONFIG)64
+linux_x64_clang: generate $(PROJECTDIR)/$(MAKETYPE)-linux-clang/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux-clang config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux-clang config=$(CONFIG)64
 
 .PHONY: linux_x86_clang
-linux_x86_clang: generate $(PROJECTDIR)/gmake-linux-clang/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux-clang config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-linux-clang config=$(CONFIG)32
+linux_x86_clang: generate $(PROJECTDIR)/$(MAKETYPE)-linux-clang/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux-clang config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-linux-clang config=$(CONFIG)32
 
 #-------------------------------------------------
 # gmake-osx
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-osx/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=osx --gcc_version=$(GCC_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-osx/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=osx --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: macosx_x64
-macosx_x64: generate $(PROJECTDIR)/gmake-osx/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx config=$(CONFIG)64
+macosx_x64: generate $(PROJECTDIR)/$(MAKETYPE)-osx/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx config=$(CONFIG)64
 
 .PHONY: macosx
 macosx: macosx_x86
 
 .PHONY: macosx_x86
-macosx_x86: generate $(PROJECTDIR)/gmake-osx/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx config=$(CONFIG)32
+macosx_x86: generate $(PROJECTDIR)/$(MAKETYPE)-osx/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx config=$(CONFIG)32
 
 #-------------------------------------------------
 # gmake-osx-clang
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-osx-clang/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=osx-clang --gcc_version=$(CLANG_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-osx-clang/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=osx-clang --gcc_version=$(CLANG_VERSION) $(MAKETYPE)
 
 .PHONY: macosx_x64_clang
-macosx_x64_clang: generate $(PROJECTDIR)/gmake-osx-clang/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx-clang config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx-clang config=$(CONFIG)64
+macosx_x64_clang: generate $(PROJECTDIR)/$(MAKETYPE)-osx-clang/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx-clang config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx-clang config=$(CONFIG)64
 
 .PHONY: macosx_x86_clang
-macosx_x86_clang: generate $(PROJECTDIR)/gmake-osx-clang/Makefile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx-clang config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-osx-clang config=$(CONFIG)32
+macosx_x86_clang: generate $(PROJECTDIR)/$(MAKETYPE)-osx-clang/Makefile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx-clang config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-osx-clang config=$(CONFIG)32
 
 .PHONY: xcode4
 xcode4: generate
@@ -1248,134 +1319,154 @@ xcode4-ios: generate
 #-------------------------------------------------
 
 
-$(PROJECTDIR)/gmake-solaris/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=solaris --gcc_version=$(GCC_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-solaris/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=solaris --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: solaris_x64
-solaris_x64: generate $(PROJECTDIR)/gmake-solaris/Makefile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-solaris config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-solaris config=$(CONFIG)64
+solaris_x64: generate $(PROJECTDIR)/$(MAKETYPE)-solaris/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-solaris config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-solaris config=$(CONFIG)64
 
 .PHONY: solaris
 solaris: solaris_x86
 
 .PHONY: solaris_x86
-solaris_x86: generate $(PROJECTDIR)/gmake-solaris/Makefile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-solaris config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-solaris config=$(CONFIG)32
+solaris_x86: generate $(PROJECTDIR)/$(MAKETYPE)-solaris/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-solaris config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-solaris config=$(CONFIG)32
 
 
 #-------------------------------------------------
 # gmake-freebsd
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-freebsd/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=freebsd --gcc_version=$(GCC_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-freebsd/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=freebsd --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: freebsd_x64
-freebsd_x64: generate $(PROJECTDIR)/gmake-freebsd/Makefile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-freebsd config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-freebsd config=$(CONFIG)64
+freebsd_x64: generate $(PROJECTDIR)/$(MAKETYPE)-freebsd/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-freebsd config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-freebsd config=$(CONFIG)64
 
 .PHONY: freebsd
 freebsd: freebsd_x86
 
 .PHONY: freebsd_x86
-freebsd_x86: generate $(PROJECTDIR)/gmake-freebsd/Makefile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-freebsd config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-freebsd config=$(CONFIG)32
+freebsd_x86: generate $(PROJECTDIR)/$(MAKETYPE)-freebsd/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-freebsd config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-freebsd config=$(CONFIG)32
 
 #-------------------------------------------------
 # gmake-netbsd
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-netbsd/Makefile: makefile $(SCRIPTS) $(GENIE)
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=netbsd --gcc_version=$(GCC_VERSION) gmake
+$(PROJECTDIR)/$(MAKETYPE)-netbsd/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=netbsd --gcc_version=$(GCC_VERSION) $(MAKETYPE)
 
 .PHONY: netbsd_x64
-netbsd_x64: generate $(PROJECTDIR)/gmake-netbsd/Makefile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-netbsd config=$(CONFIG)64 precompile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-netbsd config=$(CONFIG)64
+netbsd_x64: generate $(PROJECTDIR)/$(MAKETYPE)-netbsd/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-netbsd config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-netbsd config=$(CONFIG)64
 
 .PHONY: netbsd
 netbsd: netbsd_x86
 
 .PHONY: netbsd_x86
-netbsd_x86: generate $(PROJECTDIR)/gmake-netbsd/Makefile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-netbsd config=$(CONFIG)32 precompile
-	$(SILENT) $(MAKE) -C $(PROJECTDIR)/gmake-netbsd config=$(CONFIG)32
+netbsd_x86: generate $(PROJECTDIR)/$(MAKETYPE)-netbsd/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-netbsd config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-netbsd config=$(CONFIG)32
+
+#-------------------------------------------------
+# gmake-openbsd
+#-------------------------------------------------
+
+$(PROJECTDIR)/$(MAKETYPE)-openbsd/Makefile: makefile $(SCRIPTS) $(GENIE)
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=openbsd --gcc_version=$(GCC_VERSION) $(MAKETYPE)
+
+.PHONY: openbsd_x64
+openbsd_x64: generate $(PROJECTDIR)/$(MAKETYPE)-openbsd/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-openbsd config=$(CONFIG)64 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-openbsd config=$(CONFIG)64
+
+.PHONY: openbsd
+openbsd: openbsd_x86
+
+.PHONY: openbsd_x86
+openbsd_x86: generate $(PROJECTDIR)/$(MAKETYPE)-openbsd/Makefile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-openbsd config=$(CONFIG)32 precompile
+	$(SILENT) $(MAKE) -C $(PROJECTDIR)/$(MAKETYPE)-openbsd config=$(CONFIG)32
 
 #-------------------------------------------------
 # gmake-steamlink
 #-------------------------------------------------
 
-$(PROJECTDIR)/gmake-steamlink/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR)/$(MAKETYPE)-steamlink/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef MARVELL_SDK_PATH
 	$(error MARVELL_SDK_PATH is not set)
 endif
 ifndef MARVELL_ROOTFS
 	$(error MARVELL_ROOTFS is not set)
 endif
-	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=steamlink --gcc_version=$(GCC_VERSION) --NO_OPENGL=1 --NO_USE_MIDI=1 --NO_X11=1 --NOASM=1 --SDL_INSTALL_ROOT=$(MARVELL_ROOTFS)/usr  gmake  
+	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) --gcc=steamlink --gcc_version=$(GCC_VERSION) --NO_OPENGL=1 --NO_USE_MIDI=1 --NO_X11=1 --NOASM=1 --SDL_INSTALL_ROOT=$(MARVELL_ROOTFS)/usr  $(MAKETYPE)
 
 .PHONY: steamlink
-steamlink: generate $(PROJECTDIR)/gmake-steamlink/Makefile
+steamlink: generate $(PROJECTDIR)/$(MAKETYPE)-steamlink/Makefile
 ifndef MARVELL_SDK_PATH
 	$(error MARVELL_SDK_PATH is not set)
 endif
 ifndef MARVELL_ROOTFS
 	$(error MARVELL_ROOTFS is not set)
 endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-steamlink config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/gmake-steamlink config=$(CONFIG)
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-steamlink config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR)/$(MAKETYPE)-steamlink config=$(CONFIG)
 
 #-------------------------------------------------
 # gmake-rpi
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-rpi/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-rpi/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef RASPBERRY_SDK_PATH
 	$(error RASPBERRY_SDK_PATH is not set)
 endif
 ifndef RASPBERRY_SYSROOT
 	$(error RASPBERRY_SYSROOT is not set)
 endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=rpi --gcc_version=4.9.2 --osd=sdl --targetos=rpi --targetos=rpi --NO_USE_MIDI=1 --PLATFORM=arm --NOASM=1 --USE_QTDEBUG=0 --SDL_INSTALL_ROOT=$(RASPBERRY_SYSROOT)/usr  gmake  
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=rpi --gcc_version=4.9.2 --osd=sdl --targetos=rpi --targetos=rpi --NO_USE_MIDI=1 --PLATFORM=arm --NOASM=1 --USE_QTDEBUG=0 --SDL_INSTALL_ROOT=$(RASPBERRY_SYSROOT)/usr  $(MAKETYPE)
 
 .PHONY: rpi
-rpi: generate $(PROJECTDIR_SDL)/gmake-rpi/Makefile
+rpi: generate $(PROJECTDIR_SDL)/$(MAKETYPE)-rpi/Makefile
 ifndef RASPBERRY_SDK_PATH
 	$(error RASPBERRY_SDK_PATH is not set)
 endif
 ifndef RASPBERRY_SYSROOT
 	$(error RASPBERRY_SYSROOT is not set)
 endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-rpi config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-rpi config=$(CONFIG)
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-rpi config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-rpi config=$(CONFIG)
 
 #-------------------------------------------------
 # gmake-ci20
 #-------------------------------------------------
 
-$(PROJECTDIR_SDL)/gmake-ci20/Makefile: makefile $(SCRIPTS) $(GENIE)
+$(PROJECTDIR_SDL)/$(MAKETYPE)-ci20/Makefile: makefile $(SCRIPTS) $(GENIE)
 ifndef MIPS_LINUXGNU_ROOT
 	$(error MIPS_LINUXGNU_ROOT is not set)
 endif
 ifndef CI20_SYSROOT
 	$(error CI20_SYSROOT is not set)
 endif
-	$(SILENT) $(GENIE) $(PARAMS) --gcc=ci20 --gcc_version=4.9.2 --osd=sdl --targetos=ci20 --targetos=ci20 --NO_USE_MIDI=1  --PLATFORM=arm --NOASM=1 --USE_QTDEBUG=0 --SDL_INSTALL_ROOT=$(RASPBERRY_SYSROOT)/usr  gmake  
+	$(SILENT) $(GENIE) $(PARAMS) --gcc=ci20 --gcc_version=4.9.2 --osd=sdl --targetos=ci20 --targetos=ci20 --NO_USE_MIDI=1  --PLATFORM=arm --NOASM=1 --USE_QTDEBUG=0 --SDL_INSTALL_ROOT=$(RASPBERRY_SYSROOT)/usr  $(MAKETYPE)
 
 .PHONY: ci20
-ci20: generate $(PROJECTDIR_SDL)/gmake-ci20/Makefile
+ci20: generate $(PROJECTDIR_SDL)/$(MAKETYPE)-ci20/Makefile
 ifndef MIPS_LINUXGNU_ROOT
 	$(error MIPS_LINUXGNU_ROOT is not set)
 endif
 ifndef CI20_SYSROOT
 	$(error CI20_SYSROOT is not set)
 endif
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-ci20 config=$(CONFIG) precompile
-	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/gmake-ci20 config=$(CONFIG)
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-ci20 config=$(CONFIG) precompile
+	$(SILENT) $(MAKE) $(MAKEPARAMS) -C $(PROJECTDIR_SDL)/$(MAKETYPE)-ci20 config=$(CONFIG)
 
 #-------------------------------------------------
 # cmake
@@ -1383,7 +1474,7 @@ endif
 .PHONY: cmake
 cmake: generate
 	$(SILENT) $(GENIE) $(PARAMS) $(TARGET_PARAMS) cmake
-ifeq ($(OS),windows)
+ifneq (posix,$(SHELLTYPE))
 	$(SILENT)echo cmake_minimum_required(VERSION 2.8.4) > CMakeLists.txt
 	$(SILENT)echo add_subdirectory($(PROJECTDIR)/cmake) >> CMakeLists.txt
 else
@@ -1410,8 +1501,9 @@ clean: genieclean
 	@echo Cleaning...
 	-@rm -rf $(BUILDDIR)
 	$(SILENT) $(MAKE) -C $(SRC)/devices/cpu/m68000 clean
+	-@rm -rf 3rdparty/bgfx/.build
 
-GEN_FOLDERS := $(GENDIR)/$(TARGET)/layout/ $(GENDIR)/$(TARGET)/$(SUBTARGET)/
+GEN_FOLDERS := $(GENDIR)/$(TARGET)/layout/ $(GENDIR)/$(TARGET)/$(SUBTARGET_FULL)/ $(GENDIR)/mame/drivers/
 
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 LAYOUTS=$(wildcard $(SRC)/$(TARGET)/layout/*.lay)
@@ -1432,8 +1524,10 @@ genie: $(GENIE)
 generate: \
 		genie \
 		$(GEN_FOLDERS) \
+		$(GENDIR)/version.cpp \
 		$(patsubst %.po,%.mo,$(call rwildcard, language/, *.po)) \
 		$(patsubst $(SRC)/%.lay,$(GENDIR)/%.lh,$(LAYOUTS)) \
+		$(GENDIR)/mame/drivers/ymmu100.hxx \
 		$(SRC)/devices/cpu/m68000/m68kops.cpp \
 		$(GENDIR)/includes/SDL2
 
@@ -1441,9 +1535,39 @@ $(GENDIR)/includes/SDL2:
 	-$(call MKDIR,$@)
 	-$(call COPY,3rdparty/SDL2/include/,$(GENDIR)/includes/SDL2)
 
+ifneq ($(NEW_GIT_VERSION),$(OLD_GIT_VERSION))
+stale:
+
+.PHONY: stale
+
+$(GENDIR)/git_desc: stale | $(GEN_FOLDERS)
+	@echo $(NEW_GIT_VERSION) > $@
+endif
+
+ifeq (posix,$(SHELLTYPE))
+$(GENDIR)/version.cpp: $(GENDIR)/git_desc | $(GEN_FOLDERS)
+	@echo '#define BARE_BUILD_VERSION "0.188"' > $@
+	@echo 'extern const char bare_build_version[];' >> $@
+	@echo 'extern const char build_version[];' >> $@
+	@echo 'const char bare_build_version[] = BARE_BUILD_VERSION;' >> $@
+	@echo 'const char build_version[] = BARE_BUILD_VERSION " ($(NEW_GIT_VERSION))";' >> $@
+else
+$(GENDIR)/version.cpp: $(GENDIR)/git_desc
+	@echo #define BARE_BUILD_VERSION "0.188" > $@
+	@echo extern const char bare_build_version[]; >> $@
+	@echo extern const char build_version[]; >> $@
+	@echo const char bare_build_version[] = BARE_BUILD_VERSION; >> $@
+	@echo const char build_version[] = BARE_BUILD_VERSION " ($(NEW_GIT_VERSION))"; >> $@
+endif
+
+
 $(GENDIR)/%.lh: $(SRC)/%.lay scripts/build/complay.py | $(GEN_FOLDERS)
 	@echo Compressing $<...
 	$(SILENT)$(PYTHON) scripts/build/complay.py $< $@ layout_$(basename $(notdir $<))
+
+$(GENDIR)/mame/drivers/ymmu100.hxx: $(SRC)/mame/drivers/ymmu100.ppm scripts/build/file2str.py
+	@echo Converting $<...
+	$(SILENT)$(PYTHON) scripts/build/file2str.py $< $@ ymmu100_bkg uint8_t
 
 $(SRC)/devices/cpu/m68000/m68kops.cpp: $(SRC)/devices/cpu/m68000/m68k_in.cpp $(SRC)/devices/cpu/m68000/m68kmake.cpp
 ifeq ($(TARGETOS),asmjs)
@@ -1483,7 +1607,7 @@ ifeq ($(OS),windows)
 	$(shell for /r src %%i in (*.mak) do srcclean %%i >&2 )
 	$(shell for /r src %%i in (*.lst) do srcclean %%i >&2 )
 	$(shell for /r src %%i in (*.lay) do srcclean %%i >&2 )
-	$(shell for /r src %%i in (*.inc) do srcclean %%i >&2 )
+	$(shell for /r src %%i in (*.hxx) do srcclean %%i >&2 )
 	$(shell for /r hash %%i in (*.xml) do srcclean %%i >&2 )
 else
 	$(shell find src/ -name *.c -exec ./srcclean {} >&2 ;)
@@ -1491,7 +1615,7 @@ else
 	$(shell find src/ -name *.mak -exec ./srcclean {} >&2 ;)
 	$(shell find src/ -name *.lst -exec ./srcclean {} >&2 ;)
 	$(shell find src/ -name *.lay -exec ./srcclean {} >&2 ;)
-	$(shell find src/ -name *.inc -exec ./srcclean {} >&2 ;)
+	$(shell find src/ -name *.hxx -exec ./srcclean {} >&2 ;)
 	$(shell find hash/ -name *.xml -exec ./srcclean {} >&2 ;)
 endif
 
@@ -1555,21 +1679,31 @@ cppcheck:
 
 #-------------------------------------------------
 # BGFX shaders
+#
+# to build all just use : make shaders
+#
+# to build specific chain use for example : make shaders CHAIN=eagle
+# data for chain is taken from src/osd/modules/render/bgfx/shaders/chains/
+# subfolder named in CHAIN
+# NOTE: shaders can be only built on Windows for now
+# due to restrictions of way how hlsl shaders are compiled
 #-------------------------------------------------
 
 .PHONY: shaders bgfx-tools
 
 bgfx-tools:
-	$(SILENT) $(MAKE) -C 3rdparty/bgfx -f makefile dist-$(GENIEOS) CC="$(CC)" CXX="$(CXX)" MINGW="$(MINGW)"
+	$(SILENT) $(MAKE) -C 3rdparty/bgfx -f makefile shaderc CC="$(CC)" CXX="$(CXX)" MINGW="$(MINGW)"
 
 shaders: bgfx-tools
-	-$(call MKDIR,build/bgfx/shaders/dx11)
-	-$(call MKDIR,build/bgfx/shaders/dx9)
-	-$(call MKDIR,build/bgfx/shaders/gles)
-	-$(call MKDIR,build/bgfx/shaders/glsl)
-	-$(call MKDIR,build/bgfx/shaders/metal)	
-	$(SILENT) $(MAKE) -C $(SRC)/osd/modules/render/bgfx/shaders rebuild
-	
+	-$(call MKDIR,build/shaders/dx11)
+	-$(call MKDIR,build/shaders/dx9)
+	-$(call MKDIR,build/shaders/pssl)
+	-$(call MKDIR,build/shaders/metal)
+	-$(call MKDIR,build/shaders/essl)
+	-$(call MKDIR,build/shaders/glsl)
+	-$(call MKDIR,build/shaders/spirv)
+	$(SILENT) $(MAKE) -C $(SRC)/osd/modules/render/bgfx/shaders rebuild CHAIN="$(CHAIN)"
+
 #-------------------------------------------------
 # Translation
 #-------------------------------------------------
@@ -1579,6 +1713,6 @@ shaders: bgfx-tools
 translation:
 	$(SILENT) echo Generating mame.pot
 	$(SILENT) find src -iname "*.cpp" | xargs xgettext --from-code=UTF-8 -k_ -k__ -o mame.pot
-	$(SILENT) find language -iname "*.po" | xargs -n 1 -I %% msgmerge -U -N %% mame.pot 
+	$(SILENT) find language -iname "*.po" | xargs -n 1 -I %% msgmerge -U -N %% mame.pot
 	$(SILENT) find language -iname "*.po" | xargs -n 1 -I %% msgattrib --clear-fuzzy --empty %% -o %%
 

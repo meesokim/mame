@@ -153,7 +153,7 @@ DIPs
 ----
 
 They're now correct (including locations) according to the
-manuals. Nevertherless, ainferno manual states that the coinage
+manuals. Nevertheless, ainferno manual states that the coinage
 DIPs are the same as topland, which is clearly wrong if you try
 them ("SWB:7,8" do not set Coin B to multiple credits for each
 coin!)
@@ -195,13 +195,16 @@ perhaps? The two writes seem to take only two values.
  */
 
 #include "emu.h"
-#include "cpu/z80/z80.h"
-#include "cpu/m68000/m68000.h"
-#include "includes/taitoipt.h"
 #include "includes/taitoair.h"
+#include "includes/taitoipt.h"
 #include "audio/taitosnd.h"
+
+#include "cpu/m68000/m68000.h"
 #include "cpu/tms32025/tms32025.h"
+#include "cpu/z80/z80.h"
 #include "sound/2610intf.h"
+#include "speaker.h"
+
 
 /***********************************************************
                 MEMORY handlers
@@ -272,7 +275,7 @@ WRITE16_MEMBER(taitoair_state::airsys_paletteram16_w)/* xxBBBBxRRRRxGGGG */
 
 WRITE16_MEMBER(taitoair_state::airsys_gradram_w)
 {
-	UINT32 pen;
+	uint32_t pen;
 	int r,g,b;
 	//int pal_r,pal_g,pal_b;
 
@@ -371,6 +374,14 @@ WRITE16_MEMBER(taitoair_state::dma_regs_w)
 	}
 }
 
+WRITE8_MEMBER(taitoair_state::coin_control_w)
+{
+	machine().bookkeeping().coin_lockout_w(0, ~data & 0x01);
+	machine().bookkeeping().coin_lockout_w(1, ~data & 0x02);
+	machine().bookkeeping().coin_counter_w(0, data & 0x04);
+	machine().bookkeeping().coin_counter_w(1, data & 0x08);
+}
+
 /***********************************************************
              MEMORY STRUCTURES
 ***********************************************************/
@@ -436,7 +447,7 @@ WRITE16_MEMBER(taitoair_state::dsp_test_z_w)
 
 READ16_MEMBER(taitoair_state::dsp_test_point_r)
 {
-	UINT16 r = 0;
+	uint16_t r = 0;
 	if(m_dsp_test_x < -m_dsp_test_z)
 		r |= 1;
 	if(m_dsp_test_x >  m_dsp_test_z)
@@ -534,11 +545,6 @@ static ADDRESS_MAP_START( DSP_map_data, AS_DATA, 16, taitoair_state )
 
 	AM_RANGE(0x4000, 0x7fff) AM_READWRITE(lineram_r, lineram_w)
 	AM_RANGE(0x8000, 0xffff) AM_READWRITE(dspram_r, dspram_w)
-ADDRESS_MAP_END
-
-static ADDRESS_MAP_START( DSP_map_io, AS_IO, 16, taitoair_state )
-	AM_RANGE(TMS32025_HOLD, TMS32025_HOLD) AM_READ(dsp_HOLD_signal_r)
-	AM_RANGE(TMS32025_HOLDA, TMS32025_HOLDA) AM_WRITE(dsp_HOLDA_signal_w)
 ADDRESS_MAP_END
 
 
@@ -683,17 +689,6 @@ GFXDECODE_END
 
 
 /************************************************************
-                YM2610 (SOUND)
-************************************************************/
-
-/* Handler called by the YM2610 emulator when the internal timers cause an IRQ */
-WRITE_LINE_MEMBER(taitoair_state::irqhandler)
-{
-	m_audiocpu->set_input_line(0, state ? ASSERT_LINE : CLEAR_LINE);
-}
-
-
-/************************************************************
                 MACHINE DRIVERS
 ************************************************************/
 
@@ -724,7 +719,7 @@ void taitoair_state::machine_reset()
 	}
 }
 
-static MACHINE_CONFIG_START( airsys, taitoair_state )
+static MACHINE_CONFIG_START( airsys )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M68000, XTAL_12MHz) // MC68000P12
@@ -737,7 +732,8 @@ static MACHINE_CONFIG_START( airsys, taitoair_state )
 	MCFG_CPU_ADD("dsp", TMS32025, XTAL_36MHz) // Unverified
 	MCFG_CPU_PROGRAM_MAP(DSP_map_program)
 	MCFG_CPU_DATA_MAP(DSP_map_data)
-	MCFG_CPU_IO_MAP(DSP_map_io)
+	MCFG_TMS32025_HOLD_IN_CB(READ16(taitoair_state, dsp_HOLD_signal_r))
+	MCFG_TMS32025_HOLD_ACK_OUT_CB(WRITE16(taitoair_state, dsp_HOLDA_signal_w))
 
 	MCFG_QUANTUM_PERFECT_CPU("maincpu")
 
@@ -746,6 +742,7 @@ static MACHINE_CONFIG_START( airsys, taitoair_state )
 	MCFG_TC0220IOC_READ_1_CB(IOPORT("DSWB"))
 	MCFG_TC0220IOC_READ_2_CB(IOPORT("IN0"))
 	MCFG_TC0220IOC_READ_3_CB(IOPORT("IN1"))
+	MCFG_TC0220IOC_WRITE_4_CB(WRITE8(taitoair_state, coin_control_w))
 	MCFG_TC0220IOC_READ_7_CB(IOPORT("IN2"))
 
 	/* video hardware */
@@ -772,7 +769,7 @@ static MACHINE_CONFIG_START( airsys, taitoair_state )
 	MCFG_SPEAKER_STANDARD_MONO("mono")
 
 	MCFG_SOUND_ADD("ymsnd", YM2610, XTAL_16MHz / 2)
-	MCFG_YM2610_IRQ_HANDLER(WRITELINE(taitoair_state, irqhandler))
+	MCFG_YM2610_IRQ_HANDLER(INPUTLINE("audiocpu", 0))
 	MCFG_SOUND_ROUTE(0, "mono", 0.30)
 	MCFG_SOUND_ROUTE(1, "mono", 0.60)
 	MCFG_SOUND_ROUTE(2, "mono", 0.60)
@@ -851,6 +848,53 @@ ROM_START( topland )
 	ROM_LOAD( "pal20l8b-b62-04.bin", 0x0400, 0x0144, CRC(80512abc) SHA1(0e87e59df3c4d3b4adba295dbd5a2c27b9d5fefd) )
 	ROM_LOAD( "pal16l8a-b62-10.bin", 0x0600, 0x0104, CRC(6c1e3fc4) SHA1(8953d82ed94741fdfacb0465415915ca398678d4) )
 ROM_END
+
+ROM_START( toplandj )
+	ROM_REGION( 0xc0000, "maincpu", 0 ) /* 68000 */
+	ROM_LOAD16_BYTE( "b62_27.ic43",  0x00000, 0x20000, CRC(c717c3b7) SHA1(b5bee250dc4ba530b1d3a73926dc848a0f340a70) )
+	ROM_LOAD16_BYTE( "b62_26.ic14",  0x00001, 0x20000, CRC(340bfa56) SHA1(b5df3dc43ed299a22213b517ac4a1c1d776bbdbf) )
+	ROM_LOAD16_BYTE( "b62_25.42",  0x40000, 0x20000, CRC(1bd53a72) SHA1(ada679198739cd6a419d3fa4311bb92dc385099c) )
+	ROM_LOAD16_BYTE( "b62_24.13",  0x40001, 0x20000, CRC(845026c5) SHA1(ab8d8f5f6597bfcde4e9ccf9e0181b8b6e769ada) )
+	ROM_LOAD16_BYTE( "b62_23.41",  0x80000, 0x20000, CRC(ef3a971c) SHA1(0840668dda48f4c9a85410361bfba3ae9580a71f) )
+	ROM_LOAD16_BYTE( "b62_22.12",  0x80001, 0x20000, CRC(94279201) SHA1(8518d8e722d4f2516f75224d9a21ab20d8ee6c78) )
+
+	ROM_REGION( 0x10000, "audiocpu", 0 )    /* Z80 */
+	ROM_LOAD( "b62_19.ic34", 0x00000, 0x10000, CRC(2c0a3786) SHA1(58dc4a18d1d1b0d023721677a9c1b091a6304f4a) )
+
+	ROM_REGION( 0x20000, "dsp", 0 ) /* TMS320C25 */
+	ROM_LOAD16_BYTE( "b62-21.35", 0x00000, 0x02000, CRC(5f38460d) SHA1(0593718d15b30b10f7686959932e2c934de2a529) )  // cpu board
+	ROM_LOAD16_BYTE( "b62-20.6",  0x00001, 0x02000, CRC(a4afe958) SHA1(7593a327f4ea0cc9e28fd3269278871f62fb0598) )  // cpu board
+
+	ROM_REGION( 0x100000, "gfx1", 0 )   /* 16x16 tiles */
+	ROM_LOAD16_BYTE( "b62-33.39",  0x000000, 0x20000, CRC(38786867) SHA1(7292e3fa69cad6494f2e8e7efa9c3f989bdf958d) )
+	ROM_LOAD16_BYTE( "b62-36.48",  0x000001, 0x20000, CRC(4259e76a) SHA1(eb0dc5d0a6f875e3b8335fb30d4c2ad3880c31b9) )
+	ROM_LOAD16_BYTE( "b62-29.27",  0x040000, 0x20000, CRC(efdd5c51) SHA1(6df3e9782946cf6f4a21ee3d335548c53cd21e3a) )
+	ROM_LOAD16_BYTE( "b62-34.40",  0x040001, 0x20000, CRC(a7e10ca4) SHA1(862c23c095f96f9e0cae00d70947782d5f4e45e6) )
+	ROM_LOAD16_BYTE( "b62-35.47",  0x080000, 0x20000, CRC(cba7bac5) SHA1(5305c84abcbcc23281744454803b849853b26632) )
+	ROM_LOAD16_BYTE( "b62-30.28",  0x080001, 0x20000, CRC(30e37cb8) SHA1(6bc777bdf1a56952dbfbe2f595279a43e2fa98fd) )
+	ROM_LOAD16_BYTE( "b62-31.29",  0x0c0000, 0x20000, CRC(3feebfe3) SHA1(5b014d7d6fa1daf400ac1a437f551281debfdba6) )
+	ROM_LOAD16_BYTE( "b62-32.30",  0x0c0001, 0x20000, CRC(66806646) SHA1(d8e0c37b5227d8583d523164ffc6828b4508d5a3) )
+
+	ROM_REGION( 0xa0000, "ymsnd", 0 )   /* ADPCM samples */
+	ROM_LOAD( "b62-17.5",  0x00000, 0x20000, CRC(36447066) SHA1(91c8cc4e99534b2d533895a342abb22766a20090) )
+	ROM_LOAD( "b62-16.4",  0x20000, 0x20000, CRC(203a5c27) SHA1(f6fc9322dea8d82bfec3be3fdc8616dc6adf666e) )
+	ROM_LOAD( "b62-15.3",  0x40000, 0x20000, CRC(e35ffe81) SHA1(f35afdd7cfd4c09907fb062beb5ae46c2286a381) )
+	ROM_LOAD( "b62-14.2",  0x60000, 0x20000, CRC(617948a3) SHA1(4660570fa6263c28cfae7ccdf154763cc6144896) )
+	ROM_LOAD( "b62-13.1",  0x80000, 0x20000, CRC(b37dc3ea) SHA1(198d4f828132316c624da998e49b1873b9886bf0) )
+
+	ROM_REGION( 0x20000, "ymsnd.deltat", 0 )    /* Delta-T samples */
+	ROM_LOAD( "b62-18.31", 0x00000, 0x20000, CRC(3a4e687a) SHA1(43f07fe19dec351e851defdf9c7810fb9df04736) )
+
+	ROM_REGION( 0x02000, "user1", 0 )   /* unknown */
+	ROM_LOAD( "b62-28.22", 0x00000, 0x02000, CRC(c4be68a6) SHA1(2c07a0e71d11bca67427331217c507d849500ec1) ) // video board
+
+	ROM_REGION( 0x0800, "plds", 0 )
+	ROM_LOAD( "pal20l8b-b62-02.bin", 0x0000, 0x0144, CRC(c43ab9d8) SHA1(38542b10e9206a25669534ee26a0472e5f2d6257) )
+	ROM_LOAD( "pal20l8b-b62-03.bin", 0x0200, 0x0144, CRC(904753fa) SHA1(87f7414c3eab5740b188276b06c5b898ed07c1cd) )
+	ROM_LOAD( "pal20l8b-b62-04.bin", 0x0400, 0x0144, CRC(80512abc) SHA1(0e87e59df3c4d3b4adba295dbd5a2c27b9d5fefd) )
+	ROM_LOAD( "pal16l8a-b62-10.bin", 0x0600, 0x0104, CRC(6c1e3fc4) SHA1(8953d82ed94741fdfacb0465415915ca398678d4) )
+ROM_END
+
 
 ROM_START( ainferno )
 	ROM_REGION( 0xc0000, "maincpu", 0 ) /* 68000 */
@@ -957,7 +1001,8 @@ ROM_START( ainfernoj )
 ROM_END
 
 
-/*   ( YEAR  NAME      PARENT    MACHINE   INPUT     INIT      MONITOR  COMPANY  FULLNAME */
-GAME( 1988, topland,  0,        airsys,   topland, driver_device,  0,        ROT0,    "Taito Corporation Japan", "Top Landing (World)", MACHINE_IMPERFECT_GRAPHICS )
-GAME( 1990, ainferno, 0,        airsys,   ainferno, driver_device, 0,        ROT0,    "Taito America Corporation", "Air Inferno (US)", MACHINE_NOT_WORKING )
-GAME( 1990, ainfernoj,ainferno, airsys,   ainferno, driver_device, 0,        ROT0,    "Taito Corporation Japan", "Air Inferno (Japan)", MACHINE_NOT_WORKING )
+//    YEAR  NAME       PARENT    MACHINE   INPUT     STATE           INIT  MONITOR  COMPANY                      FULLNAME               FLAGS
+GAME( 1988, topland,   0,        airsys,   topland,  taitoair_state, 0,    ROT0,    "Taito Corporation Japan",   "Top Landing (World)", MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1988, toplandj,  topland,  airsys,   topland,  taitoair_state, 0,    ROT0,    "Taito Corporation",         "Top Landing (Japan)", MACHINE_IMPERFECT_GRAPHICS )
+GAME( 1990, ainferno,  0,        airsys,   ainferno, taitoair_state, 0,    ROT0,    "Taito America Corporation", "Air Inferno (US)",    MACHINE_NOT_WORKING )
+GAME( 1990, ainfernoj, ainferno, airsys,   ainferno, taitoair_state, 0,    ROT0,    "Taito Corporation Japan",   "Air Inferno (Japan)", MACHINE_NOT_WORKING )

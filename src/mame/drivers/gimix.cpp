@@ -119,20 +119,20 @@ public:
 	DECLARE_FLOPPY_FORMATS(floppy_formats);
 
 private:
-	UINT8 m_term_data;
-	UINT8 m_dma_status;
-	UINT8 m_dma_ctrl;
-	UINT8 m_dma_drive_select;
-	UINT16 m_dma_start_addr;
-	UINT32 m_dma_current_addr;
-	UINT8 m_task;
-	UINT8 m_task_banks[16][16];
-	UINT8 m_selected_drive;
+	uint8_t m_term_data;
+	uint8_t m_dma_status;
+	uint8_t m_dma_ctrl;
+	uint8_t m_dma_drive_select;
+	uint16_t m_dma_start_addr;
+	uint32_t m_dma_current_addr;
+	uint8_t m_task;
+	uint8_t m_task_banks[16][16];
+	uint8_t m_selected_drive;
 	bool m_floppy0_ready;
 	bool m_floppy1_ready;
 
-	UINT8 m_pia1_pa;
-	UINT8 m_pia1_pb;
+	uint8_t m_pia1_pa;
+	uint8_t m_pia1_pb;
 
 	virtual void machine_reset() override;
 	virtual void machine_start() override;
@@ -141,7 +141,7 @@ private:
 	void refresh_memory();
 
 	required_device<cpu_device> m_maincpu;
-	required_device<fd1797_t> m_fdc;
+	required_device<fd1797_device> m_fdc;
 	required_device<floppy_connector> m_floppy0;
 	required_device<floppy_connector> m_floppy1;
 	required_device<ram_device> m_ram;
@@ -220,7 +220,7 @@ ADDRESS_MAP_END
 
 static INPUT_PORTS_START( gimix )
 	PORT_START("dma_s2")
-	PORT_DIPNAME(0x00000100,0x00000000,"5.25\" / 8\" floppy drive 0") PORT_DIPLOCATION("S2:9") PORT_CHANGED_MEMBER(DEVICE_SELF,gimix_state,drive_size_cb,NULL)
+	PORT_DIPNAME(0x00000100,0x00000000,"5.25\" / 8\" floppy drive 0") PORT_DIPLOCATION("S2:9") PORT_CHANGED_MEMBER(DEVICE_SELF,gimix_state,drive_size_cb,nullptr)
 	PORT_DIPSETTING(0x00000000,"5.25\"")
 	PORT_DIPSETTING(0x00000100,"8\"")
 
@@ -228,7 +228,7 @@ INPUT_PORTS_END
 
 READ8_MEMBER( gimix_state::keyin_r )
 {
-	UINT8 ret = m_term_data;
+	uint8_t ret = m_term_data;
 	m_term_data = 0;
 	return ret;
 }
@@ -498,7 +498,7 @@ void gimix_state::machine_reset()
 
 void gimix_state::machine_start()
 {
-	UINT8* ROM = m_rom->base();
+	uint8_t* ROM = m_rom->base();
 	m_rombank1->configure_entries(0,4,ROM,0x800);
 	m_rombank2->configure_entries(0,4,ROM,0x800);
 	m_fixedrombank->configure_entries(0,4,ROM+0x700,0x800);
@@ -508,22 +508,22 @@ void gimix_state::machine_start()
 	// install any extra RAM
 	if(m_ram->size() > 65536)
 	{
-		m_bank1->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank2->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank3->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank4->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank5->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank6->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank7->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank8->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank9->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank10->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank11->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank12->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank13->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank14->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank15->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
-		m_bank16->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,0xffff,0,"upper_ram");
+		m_bank1->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank2->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank3->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank4->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank5->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank6->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank7->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank8->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank9->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank10->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank11->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank12->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank13->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank14->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank15->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
+		m_bank16->space(AS_PROGRAM).install_readwrite_bank(0x10000,m_ram->size()-1,"upper_ram");
 	}
 	m_floppy0->get_device()->set_rpm(300);
 	m_floppy1->get_device()->set_rpm(300);
@@ -572,7 +572,7 @@ MCFG_ADDRESS_MAP_BANK_ENDIANNESS(ENDIANNESS_LITTLE) \
 MCFG_ADDRESS_MAP_BANK_DATABUS_WIDTH(8) \
 MCFG_ADDRESS_MAP_BANK_STRIDE(0x1000)
 
-static MACHINE_CONFIG_START( gimix, gimix_state )
+static MACHINE_CONFIG_START( gimix )
 	// basic machine hardware
 	MCFG_CPU_ADD("maincpu", M6809E, XTAL_8MHz)
 	MCFG_CPU_PROGRAM_MAP(gimix_mem)
@@ -684,4 +684,4 @@ ROM_START( gimix )
 		ROM_LOAD( "gimixhd.h11",  0x000000, 0x001000, CRC(35c12201) SHA1(51ac9052f9757d79c7f5bd3aa5d8421e98cfcc37) )
 ROM_END
 
-COMP( 1980, gimix,    0,      0,      gimix,        gimix, driver_device, 0,      "Gimix",  "Gimix 6809 System",  MACHINE_IS_SKELETON | MACHINE_NOT_WORKING | MACHINE_NO_SOUND )
+COMP( 1980, gimix,    0,      0,      gimix,        gimix, gimix_state, 0,      "Gimix",  "Gimix 6809 System",  MACHINE_IS_SKELETON )

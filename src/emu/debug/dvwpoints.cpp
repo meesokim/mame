@@ -103,7 +103,7 @@ static int cActionAscending(const void* a, const void* b)
 {
 	const device_debug::watchpoint* left = *(device_debug::watchpoint**)a;
 	const device_debug::watchpoint* right = *(device_debug::watchpoint**)b;
-	return strcmp(left->action(), right->action());
+	return left->action().compare(right->action());
 }
 
 static int cActionDescending(const void* a, const void* b)
@@ -153,12 +153,11 @@ void debug_view_watchpoints::enumerate_sources()
 	m_source_list.reset();
 
 	// iterate over devices with disassembly interfaces
-	disasm_interface_iterator iter(machine().root_device());
-	for (device_disasm_interface *dasm = iter.first(); dasm != nullptr; dasm = iter.next())
+	for (device_disasm_interface &dasm : disasm_interface_iterator(machine().root_device()))
 	{
 		std::string name;
-		name = string_format("%s '%s'", dasm->device().name(), dasm->device().tag());
-		m_source_list.append(*global_alloc(debug_view_source(name.c_str(), &dasm->device())));
+		name = string_format("%s '%s'", dasm.device().name(), dasm.device().tag());
+		m_source_list.append(*global_alloc(debug_view_source(name.c_str(), &dasm.device())));
 	}
 
 	// reset the source to a known good entry
@@ -228,7 +227,7 @@ void debug_view_watchpoints::gather_watchpoints()
 	{
 		// Collect
 		device_debug &debugInterface = *source.device()->debug();
-		for (address_spacenum spacenum = AS_0; spacenum < ADDRESS_SPACES; ++spacenum)
+		for (int spacenum = 0; spacenum < debugInterface.watchpoint_space_count(); ++spacenum)
 		{
 			for (device_debug::watchpoint *wp = debugInterface.watchpoint_first(spacenum); wp != nullptr; wp = wp->next())
 				m_buffer.push_back(wp);
@@ -301,7 +300,7 @@ void debug_view_watchpoints::view_update()
 		pad_ostream_to_length(linebuf, tableBreaks[7]);
 
 		auto const &text(linebuf.vec());
-		for (UINT32 i = m_topleft.x; i < (m_topleft.x + m_visible.x); i++, dest++)
+		for (u32 i = m_topleft.x; i < (m_topleft.x + m_visible.x); i++, dest++)
 		{
 			dest->byte = (i < text.size()) ? text[i] : ' ';
 			dest->attrib = DCA_ANCILLARY;
@@ -340,7 +339,7 @@ void debug_view_watchpoints::view_update()
 			pad_ostream_to_length(linebuf, tableBreaks[7]);
 
 			auto const &text(linebuf.vec());
-			for (UINT32 i = m_topleft.x; i < (m_topleft.x + m_visible.x); i++, dest++)
+			for (u32 i = m_topleft.x; i < (m_topleft.x + m_visible.x); i++, dest++)
 			{
 				dest->byte = (i < text.size()) ? text[i] : ' ';
 				dest->attrib = DCA_NORMAL;

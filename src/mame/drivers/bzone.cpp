@@ -207,12 +207,16 @@
 ***************************************************************************/
 
 #include "emu.h"
+#include "includes/bzone.h"
+
 #include "cpu/m6502/m6502.h"
+#include "machine/watchdog.h"
 #include "video/vector.h"
 #include "video/avgdvg.h"
 #include "machine/atari_vg.h"
-#include "includes/bzone.h"
 #include "sound/pokey.h"
+#include "screen.h"
+#include "speaker.h"
 
 #include "bzone.lh"
 #include "redbaron.lh"
@@ -304,7 +308,7 @@ static ADDRESS_MAP_START( bzone_map, AS_PROGRAM, 8, bzone_state )
 	AM_RANGE(0x0c00, 0x0c00) AM_READ_PORT("DSW1")
 	AM_RANGE(0x1000, 0x1000) AM_WRITE(bzone_coin_counter_w)
 	AM_RANGE(0x1200, 0x1200) AM_DEVWRITE("avg", avg_bzone_device, go_w)
-	AM_RANGE(0x1400, 0x1400) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x1400, 0x1400) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x1600, 0x1600) AM_DEVWRITE("avg", avg_bzone_device, reset_w)
 	AM_RANGE(0x1800, 0x1800) AM_DEVREAD("mathbox", mathbox_device, status_r)
 	AM_RANGE(0x1810, 0x1810) AM_DEVREAD("mathbox", mathbox_device, lo_r)
@@ -324,7 +328,7 @@ static ADDRESS_MAP_START( redbaron_map, AS_PROGRAM, 8, bzone_state )
 	AM_RANGE(0x0c00, 0x0c00) AM_READ_PORT("DSW1")
 	AM_RANGE(0x1000, 0x1000) AM_WRITENOP        /* coin out - Manual states this is "Coin Counter" */
 	AM_RANGE(0x1200, 0x1200) AM_DEVWRITE("avg", avg_bzone_device, go_w)
-	AM_RANGE(0x1400, 0x1400) AM_WRITE(watchdog_reset_w)
+	AM_RANGE(0x1400, 0x1400) AM_DEVWRITE("watchdog", watchdog_timer_device, reset_w)
 	AM_RANGE(0x1600, 0x1600) AM_DEVWRITE("avg", avg_bzone_device, reset_w)
 	AM_RANGE(0x1800, 0x1800) AM_DEVREAD("mathbox", mathbox_device, status_r)
 	AM_RANGE(0x1802, 0x1802) AM_READ_PORT("IN4")
@@ -354,12 +358,12 @@ ADDRESS_MAP_END
 	PORT_BIT( 0x02, IP_ACTIVE_LOW, IPT_COIN2 )\
 	PORT_BIT( 0x0c, IP_ACTIVE_LOW, IPT_UNUSED )\
 	PORT_SERVICE( 0x10, IP_ACTIVE_LOW )\
-	PORT_BIT( 0x20, IP_ACTIVE_LOW, IPT_SERVICE ) PORT_NAME("Diagnostic Step") PORT_CODE(KEYCODE_F1)\
+	PORT_BIT( 0x20, IP_ACTIVE_LOW, IPT_SERVICE1 ) PORT_NAME("Diagnostic Step") \
 	/* bit 6 is the VG HALT bit. We set it to "low" */\
 	/* per default (busy vector processor). */\
-	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER("avg", avg_bzone_device, done_r, NULL)\
+	PORT_BIT( 0x40, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER("avg", avg_bzone_device, done_r, nullptr)\
 	/* bit 7 is tied to a 3kHz clock */\
-	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, bzone_state,clock_r, NULL)
+	PORT_BIT( 0x80, IP_ACTIVE_HIGH, IPT_SPECIAL ) PORT_CUSTOM_MEMBER(DEVICE_SELF, bzone_state,clock_r, nullptr)
 
 
 #define BZONEDSW0\
@@ -531,12 +535,14 @@ INPUT_PORTS_END
  *
  *************************************/
 
-static MACHINE_CONFIG_START( bzone_base, bzone_state )
+static MACHINE_CONFIG_START( bzone_base )
 
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu", M6502, BZONE_MASTER_CLOCK / 8)
 	MCFG_CPU_PROGRAM_MAP(bzone_map)
 	MCFG_CPU_PERIODIC_INT_DRIVER(bzone_state, bzone_interrupt,  BZONE_CLOCK_3KHZ / 12)
+
+	MCFG_WATCHDOG_ADD("watchdog")
 
 	/* video hardware */
 	MCFG_VECTOR_ADD("vector")
@@ -875,9 +881,9 @@ DRIVER_INIT_MEMBER(bzone_state,bradley)
  *
  *************************************/
 
-GAMEL(1980, bzone,     0,        bzone,    bzone, driver_device,    0,       ROT0, "Atari", "Battle Zone (rev 2)", MACHINE_SUPPORTS_SAVE, layout_bzone )
-GAMEL(1980, bzonea,    bzone,    bzone,    bzone, driver_device,    0,       ROT0, "Atari", "Battle Zone (rev 1)", MACHINE_SUPPORTS_SAVE, layout_bzone )
-GAMEL(1980, bzonec,    bzone,    bzone,    bzone, driver_device,    0,       ROT0, "Atari", "Battle Zone (cocktail)", MACHINE_SUPPORTS_SAVE|MACHINE_NO_COCKTAIL, layout_bzone )
-GAME( 1980, bradley,   0,        bzone,    bradley, bzone_state,  bradley, ROT0, "Atari", "Bradley Trainer", MACHINE_SUPPORTS_SAVE )
-GAMEL(1980, redbaron,  0,        redbaron, redbaron, driver_device, 0,       ROT0, "Atari", "Red Baron (Revised Hardware)", MACHINE_SUPPORTS_SAVE, layout_redbaron )
-GAMEL(1980, redbarona, redbaron, redbaron, redbaron, driver_device, 0,       ROT0, "Atari", "Red Baron", MACHINE_SUPPORTS_SAVE, layout_redbaron )
+GAMEL(1980, bzone,     0,        bzone,    bzone,    bzone_state, 0,       ROT0, "Atari", "Battle Zone (rev 2)",          MACHINE_SUPPORTS_SAVE, layout_bzone )
+GAMEL(1980, bzonea,    bzone,    bzone,    bzone,    bzone_state, 0,       ROT0, "Atari", "Battle Zone (rev 1)",          MACHINE_SUPPORTS_SAVE, layout_bzone )
+GAMEL(1980, bzonec,    bzone,    bzone,    bzone,    bzone_state, 0,       ROT0, "Atari", "Battle Zone (cocktail)",       MACHINE_SUPPORTS_SAVE|MACHINE_NO_COCKTAIL, layout_bzone )
+GAME( 1980, bradley,   0,        bzone,    bradley,  bzone_state, bradley, ROT0, "Atari", "Bradley Trainer",              MACHINE_SUPPORTS_SAVE )
+GAMEL(1980, redbaron,  0,        redbaron, redbaron, bzone_state, 0,       ROT0, "Atari", "Red Baron (Revised Hardware)", MACHINE_SUPPORTS_SAVE, layout_redbaron )
+GAMEL(1980, redbarona, redbaron, redbaron, redbaron, bzone_state, 0,       ROT0, "Atari", "Red Baron",                    MACHINE_SUPPORTS_SAVE, layout_redbaron )

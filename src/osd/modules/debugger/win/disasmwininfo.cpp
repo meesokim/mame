@@ -6,6 +6,7 @@
 //
 //============================================================
 
+#include "emu.h"
 #include "disasmwininfo.h"
 
 #include "debugviewinfo.h"
@@ -15,10 +16,10 @@
 
 
 disasmwin_info::disasmwin_info(debugger_windows_interface &debugger) :
-	disasmbasewin_info(debugger, false, "Disassembly", NULL),
-	m_combownd(NULL)
+	disasmbasewin_info(debugger, false, "Disassembly", nullptr),
+	m_combownd(nullptr)
 {
-	if ((window() == NULL) || (m_views[0] == NULL))
+	if ((window() == nullptr) || (m_views[0] == nullptr))
 		return;
 
 	// set up the view to track the initial expression
@@ -125,7 +126,7 @@ void disasmwin_info::draw_contents(HDC dc)
 }
 
 
-void disasmwin_info::process_string(char const *string)
+void disasmwin_info::process_string(const std::string &string)
 {
 	// set the string to the disasm view
 	downcast<disasmview_info *>(m_views[0].get())->set_expression(string);
