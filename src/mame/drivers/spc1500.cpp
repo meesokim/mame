@@ -231,6 +231,14 @@ TODO:
 #include "sound/ay8910.h"
 #include "sound/wave.h"
 #include "video/mc6845.h"
+#include "machine/wd_fdc.h"
+#include "imagedev/cassette.h"
+#include "imagedev/flopdrv.h"
+#include "formats/spc1000_cas.h"
+#include "formats/2d_dsk.h"
+#include "bus/centronics/ctronics.h"
+#include "machine/upd765.h"
+
 
 #include "screen.h"
 #include "softlist.h"
@@ -258,7 +266,10 @@ public:
 		, m_pio(*this, "ppi8255")
 		, m_sound(*this, "ay8910")
 		, m_palette(*this, "palette")
+		, m_fdc(*this, "upd765")
+		, m_fd0(nullptr)
 		, m_timer(nullptr)
+		, m_timer_tc(nullptr)
 	{}
 	DECLARE_READ8_MEMBER(psga_r);
 	DECLARE_READ8_MEMBER(porta_r);
@@ -281,15 +292,20 @@ public:
 	DECLARE_WRITE8_MEMBER(ramsel);
 	DECLARE_WRITE8_MEMBER(portb_w);
 	DECLARE_WRITE8_MEMBER(psgb_w);
+	DECLARE_READ8_MEMBER(portc_r);
 	DECLARE_WRITE8_MEMBER(portc_w);
 	DECLARE_READ8_MEMBER(portb_r);
 	DECLARE_WRITE8_MEMBER(double_w);
 	DECLARE_READ8_MEMBER(io_r);
+	DECLARE_WRITE8_MEMBER(fdc_w);
+	DECLARE_READ8_MEMBER(fdc_r);
+	DECLARE_WRITE8_MEMBER(fdcx_w);
+	DECLARE_READ8_MEMBER(fdcx_r);
 	DECLARE_PALETTE_INIT(spc);
 	DECLARE_VIDEO_START(spc);
 	MC6845_UPDATE_ROW(crtc_update_row);
 	MC6845_RECONFIGURE(crtc_reconfig);
-	TIMER_DEVICE_CALLBACK_MEMBER(timer);
+	DECLARE_FLOPPY_FORMATS(floppy_formats);	
 private:
 	uint8_t *m_p_ram;
 	uint8_t m_ipl;
@@ -298,6 +314,7 @@ private:
 	uint16_t m_page;
 	uint8_t m_pcg_char, m_pcg_attr, m_char_change, m_pcg_char0;
 	uint16_t m_pcg_offset[3];
+	uint8 m_portc;
 	int m_char_count;
 	attotime m_time;
 	bool m_romsel;
@@ -305,6 +322,7 @@ private:
 	bool m_p5bit;
 	bool m_motor;
 	bool m_motor_toggle;
+	bool m_x1compatible;
 	uint8_t m_crtc_vreg[0x100];
 	bool m_centronics_busy;
 	virtual void machine_start() override;
@@ -321,11 +339,15 @@ private:
 	required_device<centronics_device> m_centronics;
 	required_device<i8255_device> m_pio;
 	required_device<ay8910_device> m_sound;
-	required_device<palette_device> m_palette;
+	required_device<palette_device> m_palette;	
+	required_device<upd765a_device> m_fdc;
+	floppy_image_device *m_fd0;
 	uint8_t *m_font;
 	uint8_t m_priority;
 	emu_timer *m_timer;
+	emu_timer *m_timer_tc;
 	void get_pcg_addr();
+	static const device_timer_id TIMER_TC = 0;	
 };
 
 READ8_MEMBER( spc1500_state::keyboard_r )
@@ -370,9 +392,18 @@ WRITE8_MEMBER( spc1500_state::psgb_w)
 	if (m_motor && !BIT(data, 7) && (elapsed_time > 100))
 	{
 		m_cass->change_state((m_cass->get_state() & CASSETTE_MASK_MOTOR) == CASSETTE_MOTOR_DISABLED ? CASSETTE_MOTOR_ENABLED : CASSETTE_MOTOR_DISABLED, CASSETTE_MASK_MOTOR);
+		if ((m_cass->get_state() & CASSETTE_MASK_MOTOR) == CASSETTE_MOTOR_DISABLED)
+			machine().video().set_throttle_rate(1.0);
+		else
+			machine().video().set_throttle_rate(100.0);
 		m_timer->reset();
 	}
 	m_motor = BIT(data, 7);
+}
+
+READ8_MEMBER( spc1500_state::portc_r)
+{
+	return m_portc;
 }
 
 WRITE8_MEMBER( spc1500_state::portc_w)
@@ -382,6 +413,26 @@ WRITE8_MEMBER( spc1500_state::portc_w)
 	m_double_mode = (!m_p5bit && BIT(data, 5)); // double access I/O mode
 	m_p5bit = BIT(data, 5);
 	m_vdg->set_clock(VDP_CLOCK/(BIT(data, 2) ? 48 : 24));
+#if 0	
+	if (m_x1compatible != BIT(data, 1))
+	{
+		UINT8 *mem_ipl = memregion("ipl")->base();		
+		if (!BIT(data, 1))
+		{
+			mem_ipl[0x279] = 0x79;
+			mem_ipl[0x281] = 0x73;
+			printf("X1 compatible mode\n");
+		}
+		else
+		{
+			mem_ipl[0x279] = 0x59;
+			mem_ipl[0x281] = 0x53;
+			printf("SPC mode\n");
+		}
+		m_x1compatible = !m_x1compatible;
+	}
+#endif		
+	m_portc = data;
 }
 
 READ8_MEMBER( spc1500_state::portb_r)
@@ -406,6 +457,8 @@ WRITE8_MEMBER( spc1500_state::crtc_w)
 	else
 	{
 		m_crtc_vreg[m_crtc_index] = data;
+//		printf("vreg[%d]=0x%02x\n", m_crtc_index, data);
+		fflush(stdout);
 		m_vdg->register_w(space, 0, data);
 	}
 }
@@ -458,7 +511,7 @@ WRITE8_MEMBER( spc1500_state::pcg_w)
 	int reg = (offset>>8)-0x15;
 	get_pcg_addr();
 
-	m_pcgram[m_pcg_char * 8 + m_pcg_offset[reg] + (reg*0x800)] = data;
+	m_pcgram[m_pcg_char * 8  + m_pcg_offset[reg] + (reg*0x800)] = data;
 	if (m_pcg_offset[reg] == 7)
 		m_pcg_offset[reg] = 0;
 	else
@@ -487,6 +540,7 @@ READ8_MEMBER( spc1500_state::pcg_r)
 WRITE8_MEMBER( spc1500_state::priority_w)
 {
 	m_priority = data;
+//	printf("m_priority=%02x\n", data);
 }
 
 WRITE8_MEMBER( spc1500_state::palet_w)
@@ -533,7 +587,7 @@ MC6845_UPDATE_ROW(spc1500_state::crtc_update_row)
 	unsigned char cho[] ={1,1,1,1,1,1,1,1,0,0,1,1,1,3,5,5,0,0,5,3,3,5,5,5,0,0,3,3,5,1};
 	unsigned char jong[]={0,0,0,1,1,1,1,1,0,0,1,1,1,2,2,2,0,0,2,2,2,2,2,2,0,0,2,2,1,1};
 	bool inv = false;
-	char hs = (m_crtc_vreg[0x9] < 15 ? 3 : 4);
+	char hs = (m_crtc_vreg[0x9] < 15 ? (m_crtc_vreg[0x9] < 6 ? 2 : 3) : 4);
 	int n = y & (m_crtc_vreg[0x9]);
 	bool ln400 = (hs == 4 && m_crtc_vreg[0x4] > 20);
 	uint8_t *vram = &m_p_videoram[0] + (m_crtc_vreg[12] << 8) + m_crtc_vreg[13];
@@ -621,6 +675,62 @@ MC6845_UPDATE_ROW(spc1500_state::crtc_update_row)
 	}
 }
 
+WRITE8_MEMBER( spc1500_state::fdc_w )
+{
+	if (m_fd0)
+		m_fd0->mon_w(BIT(data, 1));
+	m_fdc->tc_w(BIT(data, 3));
+	m_fdc->ready_w(BIT(data, 4));
+	//printf("fdc_w(0x%02x, 0x%02x)\n", offset & 0xff, data); 
+}
+
+READ8_MEMBER( spc1500_state::fdc_r )
+{
+	UINT8 data = 0;
+	UINT8 off = offset & 0xff;
+	switch (off)
+	{
+		case 0:
+//			m_timer_tc->adjust(attotime::zero);
+			data = 0xff;
+			break;
+	}
+//	printf("fdc_r(0x%02x, 0x%02x)\n", offset & 0xff, data); 
+	return data;
+}
+
+
+WRITE8_MEMBER( spc1500_state::fdcx_w )
+{
+	UINT8 off = offset & 0xff;
+	switch (off)
+	{
+		case 0:
+			break;
+		case 1:
+			m_fdc->fifo_w(space, off, data);
+	}
+//	printf("fdcx_w(0x%02x, 0x%02x)\n", offset & 0xff, data); 
+}
+
+READ8_MEMBER( spc1500_state::fdcx_r )
+{
+	UINT8 data = 0;
+	UINT8 off = offset & 0xff;
+	switch (off)
+	{
+		case 0:
+			data = m_fdc->msr_r(space, off, 0xff);
+			break;
+		case 1:
+			data = m_fdc->fifo_r(space, off, 0xff);
+			break;
+	}
+	//printf("fdcx_r(0x%02x, 0x%02x)\n", off, data); 
+	fflush(stdout);
+	return data;
+}
+
 WRITE8_MEMBER( spc1500_state::double_w)
 {
 	if (m_double_mode)
@@ -632,6 +742,10 @@ WRITE8_MEMBER( spc1500_state::double_w)
 	}
 	else
 	{
+		if (offset < 0x800)  {} else
+		if (offset < 0x900)  { return fdcx_w(space, offset, data); } else
+		if (offset < 0xc00)  {} else
+		if (offset < 0xd00)  { return fdc_w(space, offset, data); } else
 		if (offset < 0x1000) {} else
 		if (offset < 0x1300) { palet_w(space, offset, data); } else
 		if (offset < 0x1400) { priority_w(space, offset, data); } else
@@ -660,13 +774,19 @@ WRITE8_MEMBER( spc1500_state::double_w)
 READ8_MEMBER( spc1500_state::io_r)
 {
 	m_double_mode = false;
-	if (offset < 0x1000) {} else
+	if (offset < 0x800)  {} else
+	if (offset < 0x900)  { return fdcx_r(space, offset); } else
+	if (offset < 0xc00)  {} else
+	if (offset < 0xd00)  { return fdc_r(space, offset); } else
+	if (offset < 0x1000) {} else 
 	if (offset < 0x1400) {} else
 	if (offset < 0x1800) { return pcg_r(space, offset); } else
 	if (offset < 0x1900) { return crtc_r(space, offset); } else
 	if (offset < 0x1a00) { return keyboard_r(space, offset); } else
 	if (offset < 0x1b00) { return m_pio->read(space, offset); } else
 	if (offset < 0x1c00) { return m_sound->data_r(space, offset); } else
+	if (offset < 0x1e00) { romsel(space, offset, 0);} else
+	if (offset < 0x1f00) { ramsel(space, offset, 0);} else
 	if (offset < 0x2000) {} else
 	if (offset < 0x10000){
 		if (offset < 0x4000)
@@ -865,6 +985,7 @@ void spc1500_state::machine_start()
 	membank("bank4")->set_base(m_p_ram + 0x8000);
 	m_timer = timer_alloc(0);
 	m_timer->adjust(attotime::zero);
+	memset(m_p_ram, 0x0, 0xffff);
 }
 
 void spc1500_state::machine_reset()
@@ -874,6 +995,9 @@ void spc1500_state::machine_reset()
 	m_double_mode = false;
 	memset(&m_paltbl[0], 1, 8);
 	m_char_count = 0;
+	m_fd0 = subdevice<floppy_connector>("upd765:1")->get_device();
+	m_fdc->set_floppy(m_fd0);
+	m_fd0->mon_w(false);
 }
 
 READ8_MEMBER(spc1500_state::mc6845_videoram_r)
@@ -898,6 +1022,14 @@ READ8_MEMBER( spc1500_state::porta_r )
 	return data;
 }
 
+FLOPPY_FORMATS_MEMBER( spc1500_state::floppy_formats )
+	FLOPPY_2D_FORMAT
+FLOPPY_FORMATS_END
+
+static SLOT_INTERFACE_START( spc1500_floppies )
+	SLOT_INTERFACE("dd", FLOPPY_525_DD)
+SLOT_INTERFACE_END
+
 static MACHINE_CONFIG_START( spc1500 )
 	/* basic machine hardware */
 	MCFG_CPU_ADD("maincpu",Z80, XTAL_4MHz)
@@ -911,12 +1043,14 @@ static MACHINE_CONFIG_START( spc1500 )
 	MCFG_SCREEN_ADD("screen", RASTER)
 	MCFG_SCREEN_REFRESH_RATE(60)
 	MCFG_SCREEN_VBLANK_TIME(ATTOSECONDS_IN_USEC(2500)) /* not accurate */
+//	MCFG_SCREEN_SIZE(720, 480)
+//	MCFG_SCREEN_VISIBLE_AREA((720-640)/2,720-(720-640)/2-1,80/2,480-(480-400)/2-1)
 	MCFG_SCREEN_SIZE(640, 400)
 	MCFG_SCREEN_VISIBLE_AREA(0,640-1,0,400-1)
 	MCFG_SCREEN_UPDATE_DEVICE("mc6845", mc6845_device, screen_update )
 	MCFG_PALETTE_ADD("palette", 8)
 	MCFG_PALETTE_INIT_OWNER(spc1500_state, spc)
-	MCFG_MC6845_ADD("mc6845", MC6845, "screen", (VDP_CLOCK/48)) //unknown divider
+	MCFG_MC6845_ADD("mc6845", H46505, "screen", (VDP_CLOCK/48)) //unknown divider
 	MCFG_MC6845_SHOW_BORDER_AREA(false)
 	MCFG_MC6845_CHAR_WIDTH(8)
 	MCFG_MC6845_UPDATE_ROW_CB(spc1500_state, crtc_update_row)
@@ -928,8 +1062,8 @@ static MACHINE_CONFIG_START( spc1500 )
 	MCFG_I8255_IN_PORTB_CB(READ8(spc1500_state, portb_r))
 	MCFG_I8255_OUT_PORTB_CB(WRITE8(spc1500_state, portb_w))
 	MCFG_I8255_OUT_PORTC_CB(WRITE8(spc1500_state, portc_w))
-
-	MCFG_TIMER_DRIVER_ADD_PERIODIC("1hz", spc1500_state, timer, attotime::from_hz(1))
+	MCFG_I8255_IN_PORTC_CB(READ8(spc1500_state, portc_r))
+//	MCFG_TIMER_DRIVER_ADD_PERIODIC("1hz", spc1500_state, timer, attotime::from_hz(1))
 
 	/* sound hardware */
 	MCFG_SPEAKER_STANDARD_MONO("mono")
@@ -944,7 +1078,15 @@ static MACHINE_CONFIG_START( spc1500 )
 	MCFG_CENTRONICS_BUSY_HANDLER(WRITELINE(spc1500_state, centronics_busy_w))
 	MCFG_CENTRONICS_OUTPUT_LATCH_ADD("cent_data_out", "centronics")
 	MCFG_DEVICE_ADD("cent_status_in", INPUT_BUFFER, 0)
+	
+	// floppy disk controller
+	MCFG_UPD765A_ADD("upd765", true, true)
+	//MCFG_UPD765_INTRQ_CALLBACK(INPUTLINE("maincpu", INPUT_LINE_IRQ0))
 
+	// floppy drives
+	MCFG_FLOPPY_DRIVE_ADD("upd765:1", spc1500_floppies, "dd", spc1500_state::floppy_formats)
+	MCFG_FLOPPY_DRIVE_ADD("upd765:2", spc1500_floppies, "dd", spc1500_state::floppy_formats)
+	
 	MCFG_CASSETTE_ADD("cassette")
 	MCFG_CASSETTE_FORMATS(spc1000_cassette_formats)
 	MCFG_CASSETTE_DEFAULT_STATE(CASSETTE_STOPPED | CASSETTE_SPEAKER_MUTED | CASSETTE_MOTOR_DISABLED)

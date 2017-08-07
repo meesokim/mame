@@ -357,6 +357,7 @@ READ8_MEMBER(upd765_family_device::msr_r)
 	for(int i=0; i<4; i++)
 		if(flopi[i].main_state == RECALIBRATE || flopi[i].main_state == SEEK) {
 			msr |= 1<<i;
+			msr |= MSR_DIO;
 			//msr |= MSR_CB;
 		}
 
@@ -1524,7 +1525,11 @@ void upd765_family_device::read_data_start(floppy_info &fi)
 	}
 
 	if(fi.dev)
-		fi.dev->ss_w(command[1] & 4 ? 1 : 0);
+	{
+		if (command[1] & 4)
+			command[3] = 1;
+		fi.dev->ss_w(command[1] & 4 ? 1 : 0);		
+	}
 	read_data_continue(fi);
 }
 
@@ -1569,7 +1574,11 @@ void upd765_family_device::scan_start(floppy_info &fi)
 	}
 
 	if(fi.dev)
+	{
+		if (command[1] & 4)
+			command[3] = 1;
 		fi.dev->ss_w(command[1] & 4 ? 1 : 0);
+	}
 	read_data_continue(fi);
 }
 
@@ -1739,7 +1748,11 @@ void upd765_family_device::write_data_start(floppy_info &fi)
 				cur_rate);
 
 	if(fi.dev)
+	{
+		if (command[1] & 4)
+			command[3] = 1;
 		fi.dev->ss_w(command[1] & 4 ? 1 : 0);
+	}
 
 	fi.st0 = command[1] & 7;
 	st1 = ST1_MA;
@@ -1879,7 +1892,11 @@ void upd765_family_device::read_track_start(floppy_info &fi)
 	}
 
 	if(fi.dev)
+	{
+		if (command[1] & 4)
+			command[3] = 1;
 		fi.dev->ss_w(command[1] & 4 ? 1 : 0);
+	}
 	read_track_continue(fi);
 }
 
@@ -2039,7 +2056,11 @@ void upd765_family_device::format_track_start(floppy_info &fi)
 	fi.st0 = command[1] & 7;
 
 	if(fi.dev)
+	{
+		if (command[1] & 4)
+			command[3] = 1;
 		fi.dev->ss_w(command[1] & 4 ? 1 : 0);
+	}
 	sector_size = calc_sector_size(command[2]);
 
 	format_track_continue(fi);
@@ -2094,7 +2115,11 @@ void upd765_family_device::read_id_start(floppy_info &fi)
 				cur_rate);
 
 	if(fi.dev)
+	{
+		if (command[1] & 4)
+			command[3] = 1;
 		fi.dev->ss_w(command[1] & 4 ? 1 : 0);
+	}
 
 	fi.st0 = command[1] & 7;
 	st1 = 0x00;
