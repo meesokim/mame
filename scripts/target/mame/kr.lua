@@ -34,6 +34,10 @@ SOUNDS["WAVE"] = true
 SOUNDS["BEEP"] = true
 SOUNDS["SPEAKER"] = true
 SOUNDS["YM2151"] = true
+<<<<<<< Updated upstream
+=======
+SOUNDS["VOLT_REG"] = true
+>>>>>>> Stashed changes
 
 --------------------------------------------------
 -- specify available video cores
@@ -61,6 +65,10 @@ MACHINES["Z80DART"] = true
 MACHINES["Z80PIO"] = true 
 MACHINES["Z80SIO"] = true 
 MACHINES["Z80DMA"] = true 
+<<<<<<< Updated upstream
+=======
+MACHINES["FDC_PLL"] = true
+>>>>>>> Stashed changes
 
 --------------------------------------------------
 -- specify available bus cores
@@ -71,6 +79,19 @@ BUSES["SPC1000"] = true
 BUSES["GENERIC"] = true
 
 --------------------------------------------------
+<<<<<<< Updated upstream
+=======
+-- specify used file formats
+--------------------------------------------------
+
+FORMATS["SPC1000_CAS"] = true
+FORMATS["X1_TAP"] = true
+FORMATS["UPD765_DSK"] = true
+FORMATS["2D_DSK"] = true
+FORMATS["WD177X_DSK"] = true
+
+--------------------------------------------------
+>>>>>>> Stashed changes
 -- This is the list of files that are necessary
 -- for building all of the drivers referenced
 -- in tiny.lst
@@ -99,7 +120,11 @@ files{
 	MAME_DIR .. "src/mame/drivers/spc1500.cpp",
 	MAME_DIR .. "src/mame/drivers/x1.cpp",
 	MAME_DIR .. "src/mame/includes/x1.h",
+<<<<<<< Updated upstream
 	MAME_DIR .. "src/mame/machine/x1.cpp",	
+=======
+	MAME_DIR .. "src/mame/machine/x1.cpp",
+>>>>>>> Stashed changes
 }
 end
 

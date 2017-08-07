@@ -65,7 +65,12 @@ static int spc1000_output_bit(int16_t *buffer, int sample_pos, bool bit)
 	return samples;
 }
 
+<<<<<<< Updated upstream
 static int spc1000_output_bits(INT16 *buffer, int sample_pos, bool bit, int length)
+=======
+/*
+static int spc1000_output_bits(int16_t *buffer, int sample_pos, bool bit, int length)
+>>>>>>> Stashed changes
 {
 	int samples = 0;
 	for (int i = 0; i < length; i++)
@@ -73,7 +78,11 @@ static int spc1000_output_bits(INT16 *buffer, int sample_pos, bool bit, int leng
 	return samples;
 }
 
+<<<<<<< Updated upstream
 static int spc1000_output_byte(INT16 *buffer, int sample_pos, UINT8 byte)
+=======
+static int spc1000_output_byte(int16_t *buffer, int sample_pos, int8_t byte)
+>>>>>>> Stashed changes
 {
 	int samples = 0;
 	for (int i = 0; i < 8; i++)
@@ -81,6 +90,10 @@ static int spc1000_output_byte(INT16 *buffer, int sample_pos, UINT8 byte)
 	samples += spc1000_output_bit(buffer, sample_pos + samples, 1);
 	return samples;
 }
+<<<<<<< Updated upstream
+=======
+*/
+>>>>>>> Stashed changes
 
 static int spc1000_handle_tap(int16_t *buffer, const uint8_t *bytes)
 {

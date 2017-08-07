@@ -957,6 +957,7 @@ int Android_JNI_FileOpen(SDL_RWops* ctx,
     JNIEnv *mEnv = Android_JNI_GetEnv();
     int retval;
     jstring fileNameJString;
+	char str[1024];
 
     if (!LocalReferenceHolder_Init(&refs, mEnv)) {
         LocalReferenceHolder_Cleanup(&refs);        
@@ -968,7 +969,12 @@ int Android_JNI_FileOpen(SDL_RWops* ctx,
         return -1;
     }
 
-    fileNameJString = (*mEnv)->NewStringUTF(mEnv, fileName);
+	if (SDL_AndroidGetExternalStorageState() | SDL_ANDROID_EXTERNAL_STORAGE_WRITE)
+		sprintf(str, "%s/%s", SDL_AndroidGetExternalStoragePath(), fileName);
+	else
+		strcpy(str, fileName);
+	__android_log_print(ANDROID_LOG_INFO, "SDL", "file access: %s", str);
+    fileNameJString = (*mEnv)->NewStringUTF(mEnv, str);
     ctx->hidden.androidio.fileNameRef = (*mEnv)->NewGlobalRef(mEnv, fileNameJString);
     ctx->hidden.androidio.inputStreamRef = NULL;
     ctx->hidden.androidio.readableByteChannelRef = NULL;
