@@ -286,7 +286,7 @@ int main(std::vector<std::string> &args)
 
 	// initialize common controls
 	InitCommonControls();
-
+	FreeConsole();
 	// set a handler to catch ctrl-c
 	SetConsoleCtrlHandler(control_handler, TRUE);
 
