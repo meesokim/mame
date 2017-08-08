@@ -65,12 +65,8 @@ static int spc1000_output_bit(int16_t *buffer, int sample_pos, bool bit)
 	return samples;
 }
 
-<<<<<<< Updated upstream
-static int spc1000_output_bits(INT16 *buffer, int sample_pos, bool bit, int length)
-=======
 /*
 static int spc1000_output_bits(int16_t *buffer, int sample_pos, bool bit, int length)
->>>>>>> Stashed changes
 {
 	int samples = 0;
 	for (int i = 0; i < length; i++)
@@ -78,11 +74,7 @@ static int spc1000_output_bits(int16_t *buffer, int sample_pos, bool bit, int le
 	return samples;
 }
 
-<<<<<<< Updated upstream
-static int spc1000_output_byte(INT16 *buffer, int sample_pos, UINT8 byte)
-=======
 static int spc1000_output_byte(int16_t *buffer, int sample_pos, int8_t byte)
->>>>>>> Stashed changes
 {
 	int samples = 0;
 	for (int i = 0; i < 8; i++)
@@ -90,10 +82,7 @@ static int spc1000_output_byte(int16_t *buffer, int sample_pos, int8_t byte)
 	samples += spc1000_output_bit(buffer, sample_pos + samples, 1);
 	return samples;
 }
-<<<<<<< Updated upstream
-=======
 */
->>>>>>> Stashed changes
 
 static int spc1000_handle_tap(int16_t *buffer, const uint8_t *bytes)
 {
@@ -112,7 +101,7 @@ static int spc1000_handle_cas(int16_t *buffer, const uint8_t *bytes)
 
 	/* data (skipping first 16 bytes, which is CAS header) */
 
-	for (UINT32 i = 0x1; i < spc1000_image_size; i++)
+	for (uint32_t i = 0x1; i < spc1000_image_size; i++)
 		for (int j = 0; j < 8; j++)
 			sample_count += spc1000_output_bit(buffer, sample_count, (bytes[i] >> (7 - j)) & 1);
 
@@ -122,9 +111,10 @@ static int spc1000_handle_cas(int16_t *buffer, const uint8_t *bytes)
 #define FILL_SAMPLE(bit)     sample_count += spc1000_output_bit(buffer, sample_count, bit)
 #define FILL_SAMPLES(bit, n) sample_count += spc1000_output_bits(buffer, sample_count, bit, n)
 
-static int spc1000_handle_spc(INT16 *buffer, const UINT8 *bytes)
+#if 0
+static int spc1000_handle_spc(INT16 *buffer, const uint8_t *bytes)
 {
-	UINT32 sample_count = 0;
+	uint32_t sample_count = 0;
 	int cs = 0;
 
 	/* make header leader virtually for spc format */
@@ -132,7 +122,7 @@ static int spc1000_handle_spc(INT16 *buffer, const UINT8 *bytes)
 	FILL_SAMPLES(1,40);
 	FILL_SAMPLES(0,40);
 	FILL_SAMPLES(1,2);
-	for (UINT32 i = 0x0; i < 0x80; i++)
+	for (uint32_t i = 0x0; i < 0x80; i++)
 	{
 		for (int j = 0; j < 8; j++)
 		{
@@ -166,7 +156,7 @@ static int spc1000_handle_spc(INT16 *buffer, const UINT8 *bytes)
 	sample_count += spc1000_output_byte(buffer, sample_count, cs & 0xff);
 	return sample_count;
 }
-
+#endif
 
 /*******************************************************************
    Generate samples for the tape image
@@ -181,12 +171,6 @@ static int spc1000_cas_fill_wave(int16_t *buffer, int length, uint8_t *bytes)
 {
 	return spc1000_handle_cas(buffer, bytes);
 }
-
-static int spc1000_spc_fill_wave(INT16 *buffer, int length, UINT8 *bytes)
-{
-	return spc1000_handle_spc(buffer, bytes);
-}
-
 
 /*******************************************************************
    Calculate the number of samples needed for this tape image
@@ -206,12 +190,14 @@ static int spc1000_cas_calculate_size_in_samples(const uint8_t *bytes, int lengt
 	return spc1000_handle_cas(nullptr, bytes);
 }
 
-static int spc1000_spc_calculate_size_in_samples(const UINT8 *bytes, int length)
+#if 0
+static int spc1000_spc_calculate_size_in_samples(const uint8_t *bytes, int length)
 {
 	spc1000_image_size = length;
 
 	return spc1000_handle_spc(nullptr, bytes);
 }
+#endif
 
 
 /*******************************************************************
@@ -280,40 +266,7 @@ static const struct CassetteFormat spc1000_cas_cassette_image_format =
 	nullptr
 };
 
-
-// SPC
-static const struct CassetteLegacyWaveFiller spc1000_spc_legacy_fill_wave =
-{
-	spc1000_spc_fill_wave,                 /* fill_wave */
-	-1,                                    /* chunk_size */
-	0,                                     /* chunk_samples */
-	spc1000_spc_calculate_size_in_samples, /* chunk_sample_calc */
-	SPC1000_WAV_FREQUENCY,                 /* sample_frequency */
-	0,                                     /* header_samples */
-	0                                      /* trailer_samples */
-};
-
-static casserr_t spc1000_spc_cassette_identify(cassette_image *cassette, struct CassetteOptions *opts)
-{
-	return cassette_legacy_identify(cassette, opts, &spc1000_spc_legacy_fill_wave);
-}
-
-static casserr_t spc1000_spc_cassette_load(cassette_image *cassette)
-{
-	return cassette_legacy_construct(cassette, &spc1000_spc_legacy_fill_wave);
-}
-
-static const struct CassetteFormat spc1000_spc_cassette_image_format =
-{
-	"spc",
-	spc1000_spc_cassette_identify,
-	spc1000_spc_cassette_load,
-	nullptr
-};
-
-
 CASSETTE_FORMATLIST_START(spc1000_cassette_formats)
 	CASSETTE_FORMAT(spc1000_tap_cassette_image_format)
 	CASSETTE_FORMAT(spc1000_cas_cassette_image_format)
-	CASSETTE_FORMAT(spc1000_spc_cassette_image_format)
 CASSETTE_FORMATLIST_END

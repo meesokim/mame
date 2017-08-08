@@ -306,6 +306,7 @@ public:
 	MC6845_UPDATE_ROW(crtc_update_row);
 	MC6845_RECONFIGURE(crtc_reconfig);
 	DECLARE_FLOPPY_FORMATS(floppy_formats);	
+	TIMER_DEVICE_CALLBACK_MEMBER(timer);
 private:
 	uint8_t *m_p_ram;
 	uint8_t m_ipl;
@@ -314,7 +315,7 @@ private:
 	uint16_t m_page;
 	uint8_t m_pcg_char, m_pcg_attr, m_char_change, m_pcg_char0;
 	uint16_t m_pcg_offset[3];
-	uint8 m_portc;
+	uint8_t m_portc;
 	int m_char_count;
 	attotime m_time;
 	bool m_romsel;
@@ -416,7 +417,7 @@ WRITE8_MEMBER( spc1500_state::portc_w)
 #if 0	
 	if (m_x1compatible != BIT(data, 1))
 	{
-		UINT8 *mem_ipl = memregion("ipl")->base();		
+		uint8_t *mem_ipl = memregion("ipl")->base();		
 		if (!BIT(data, 1))
 		{
 			mem_ipl[0x279] = 0x79;
@@ -686,8 +687,8 @@ WRITE8_MEMBER( spc1500_state::fdc_w )
 
 READ8_MEMBER( spc1500_state::fdc_r )
 {
-	UINT8 data = 0;
-	UINT8 off = offset & 0xff;
+	uint8_t data = 0;
+	uint8_t off = offset & 0xff;
 	switch (off)
 	{
 		case 0:
@@ -702,7 +703,7 @@ READ8_MEMBER( spc1500_state::fdc_r )
 
 WRITE8_MEMBER( spc1500_state::fdcx_w )
 {
-	UINT8 off = offset & 0xff;
+	uint8_t off = offset & 0xff;
 	switch (off)
 	{
 		case 0:
@@ -715,8 +716,8 @@ WRITE8_MEMBER( spc1500_state::fdcx_w )
 
 READ8_MEMBER( spc1500_state::fdcx_r )
 {
-	UINT8 data = 0;
-	UINT8 off = offset & 0xff;
+	uint8_t data = 0;
+	uint8_t off = offset & 0xff;
 	switch (off)
 	{
 		case 0:

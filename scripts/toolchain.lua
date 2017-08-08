@@ -853,11 +853,10 @@ function toolchain(_buildDir, _subDir)
 			"android",
 			"log",
 			"c++_static",
-<<<<<<< Updated upstream
-=======
+			"c++abi",
+			"android_support",
+			"unwind",
 			"stdc++",
->>>>>>> Stashed changes
-			"c++",
 			"gcc",
 		}
 		buildoptions {
