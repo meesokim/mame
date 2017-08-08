@@ -1138,9 +1138,11 @@ if _OPTIONS["targetos"]=="android" then
 		"GLESv1_CM",
 		"GLESv2",
 		"log",
+		"OpenSLES",
+		"c++_static"
 	}
 	linkoptions {
-		"-Wl,-soname,libSDL2.so"
+		"-Wl,-soname,libSDL2.so",
 	}
 
 	if _OPTIONS["SEPARATE_BIN"]~="1" then
@@ -1414,6 +1416,8 @@ end
 
 	if _OPTIONS["targetos"]=="android" then
 		files {
+			MAME_DIR .. "3rdparty/SDL2/src/audio/android/opensl_io.c",
+			MAME_DIR .. "3rdparty/SDL2/src/audio/android/SDL_androidaudio.h",
 			MAME_DIR .. "3rdparty/SDL2/src/audio/android/SDL_androidaudio.c",
 			MAME_DIR .. "3rdparty/SDL2/src/audio/android/SDL_androidaudio.h",
 			MAME_DIR .. "3rdparty/SDL2/src/core/android/SDL_android.c",
