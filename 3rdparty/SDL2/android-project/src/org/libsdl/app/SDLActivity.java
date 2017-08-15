@@ -1158,8 +1158,8 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         mWidth = width;
         mHeight = height;
-        SDLActivity.onNativeResize(width, height, sdlFormat, mDisplay.getRefreshRate());
-        Log.v("SDL", "Window size: " + width + "x" + height);
+        //SDLActivity.onNativeResize(width, height, sdlFormat, mDisplay.getRefreshRate());
+        //Log.v("SDL", "Window size: " + width + "x" + height);
 
  
         boolean skip = false;
@@ -1199,7 +1199,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         // Set mIsSurfaceReady to 'true' *before* making a call to handleResume
         SDLActivity.mIsSurfaceReady = true;
-        SDLActivity.onNativeSurfaceChanged();
+        //SDLActivity.onNativeSurfaceChanged();
 
 
         if (SDLActivity.mSDLThread == null) {

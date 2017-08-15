@@ -33,6 +33,10 @@
 #include "input_common.h"
 #include "input_sdlcommon.h"
 
+#if defined (SDLMAME_ANDROID)
+#include <android/log.h>
+#endif
+
 #define GET_WINDOW(ev) window_from_id((ev)->windowID)
 //#define GET_WINDOW(ev) ((ev)->windowID)
 
@@ -104,6 +108,7 @@ void sdl_event_manager::process_window_event(running_machine &machine, SDL_Event
 		m_has_focus = true;
 		break;
 
+#if 0
 	case SDL_WINDOWEVENT_RESIZED:
 #ifdef SDLMAME_LINUX
 		/* FIXME: SDL2 sends some spurious resize events on Ubuntu
@@ -113,12 +118,15 @@ void sdl_event_manager::process_window_event(running_machine &machine, SDL_Event
 #endif
 		{
 			//printf("event data1,data2 %d x %d %ld\n", event.window.data1, event.window.data2, sizeof(SDL_Event));
-			window->resize(sdlevent.window.data1, sdlevent.window.data2);
+//			window->resize(sdlevent.window.data1, sdlevent.window.data2);
+#if defined (SDLMAME_ANDROID)	
+		__android_log_print(ANDROID_LOG_INFO, "SDL", "SDL_WINDOWEVENT_RESIZED: %d x %d", sdlevent.window.data1, sdlevent.window.data2 );	
+#endif		
 		}
-		m_focus_window = window;
-		m_has_focus = true;
+//		m_focus_window = window;
+//		m_has_focus = true;
 		break;
-
+#endif
 	case SDL_WINDOWEVENT_ENTER:
 		m_mouse_over_window = 1;
 		/* fall through */

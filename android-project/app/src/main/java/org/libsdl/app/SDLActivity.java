@@ -212,58 +212,9 @@ public class SDLActivity extends Activity {
                 SDLActivity.onNativeDropFile(filename);
             }
         }
+		
 
-		Log.v(TAG, "getExternalFilesDir:" + getExternalFilesDir(null));
-		copyAssetAll("roms");
     }
-	
-	public void copyAssetAll(String srcPath) {
-		AssetManager assetMgr = this.getAssets();
-		String assets[] = null;
-		try {
-			String destPath = getExternalFilesDir(null) + File.separator + srcPath;
-			assets = assetMgr.list(srcPath);
-			if (assets.length == 0) {
-				copyFile(srcPath, destPath);
-			} else {
-				File dir = new File(destPath);
-				if (!dir.exists())
-					dir.mkdir();
-				for (String element : assets) {
-					copyAssetAll(srcPath + File.separator + element);
-				}
-			}
-		} 
-		catch (IOException e) {
-		   e.printStackTrace();
-		}
-	}
-	public void copyFile(String srcFile, String destFile) {
-		AssetManager assetMgr = this.getAssets();
-	  
-		InputStream is = null;
-		OutputStream os = null;
-		try {
-			
-			is = assetMgr.open(srcFile);
-			os = new FileOutputStream(destFile);
-	  
-			byte[] buffer = new byte[1024];
-			int read;
-			while ((read = is.read(buffer)) != -1) {
-				os.write(buffer, 0, read);
-			}
-			is.close();
-			os.flush();
-			os.close();
-			Log.v(TAG, "copy from Asset:" + destFile);
-			 
-		} 
-		catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
-
 
     // Events
     @Override
@@ -1246,7 +1197,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         mWidth = width;
         mHeight = height;
         SDLActivity.onNativeResize(width, height, sdlFormat, mDisplay.getRefreshRate());
-        Log.v("SDL", "Window size: " + width + "x" + height);
+        //Log.v("SDL", "Window size: " + width + "x" + height);
  
         boolean skip = false;
         int requestedOrientation = SDLActivity.mSingleton.getRequestedOrientation();
@@ -1285,7 +1236,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         // Set mIsSurfaceReady to 'true' *before* making a call to handleResume
         SDLActivity.mIsSurfaceReady = true;
-        SDLActivity.onNativeSurfaceChanged();
+        //SDLActivity.onNativeSurfaceChanged();
 
 
         if (SDLActivity.mSDLThread == null) {
@@ -1294,13 +1245,13 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
             final Thread sdlThread = new Thread(new SDLMain(), "SDLThread");
             enableSensor(Sensor.TYPE_ACCELEROMETER, true);
-            sdlThread.start();
 
             // Set up a listener thread to catch when the native thread ends
             SDLActivity.mSDLThread = new Thread(new Runnable(){
                 @Override
                 public void run(){
                     try {
+						sdlThread.start();
                         sdlThread.join();
                     }
                     catch(Exception e){}

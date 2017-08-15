@@ -116,6 +116,7 @@ SDL_RendererEventWatch(void *userdata, SDL_Event *event)
 
             if (event->window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                 /* Make sure we're operating on the default render target */
+#if 0				
                 SDL_Texture *saved_target = SDL_GetRenderTarget(renderer);
                 if (saved_target) {
                     SDL_SetRenderTarget(renderer, NULL);
@@ -150,6 +151,7 @@ SDL_RendererEventWatch(void *userdata, SDL_Event *event)
                 if (saved_target) {
                     SDL_SetRenderTarget(renderer, saved_target);
                 }
+#endif 				
             } else if (event->window.event == SDL_WINDOWEVENT_HIDDEN) {
                 renderer->hidden = SDL_TRUE;
             } else if (event->window.event == SDL_WINDOWEVENT_SHOWN) {

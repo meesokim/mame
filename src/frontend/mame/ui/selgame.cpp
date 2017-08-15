@@ -1517,7 +1517,6 @@ float menu_select_game::draw_left_panel(float x1, float y1, float x2, float y2)
 			text_size = lm / line_height;
 			line_height_max = line_height * text_size;
 		}
-
 		float text_sign = ui().get_string_width("_# ", text_size);
 		for (int x = 0; x < text_lenght; ++x)
 		{

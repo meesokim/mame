@@ -29,8 +29,11 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <limits.h>
 #include "opensl_io.h"
-#define CONV16BIT 32768
+#define CONV16BIT 32768 
 #define CONVMYFLT (1./32768.)
+
+#include <android/log.h>
+#define LOG_TAG "SDL_android"
 
 static void* createThreadLock(void);
 static int waitThreadLock(void *lock);
@@ -323,6 +326,7 @@ OPENSL_STREAM *android_OpenAudioDevice(int sr, int inchannels, int outchannels, 
       android_CloseAudioDevice(p);
       return NULL;
     }
+	__android_log_print(ANDROID_LOG_INFO, "OPENSL", "android_OpenAudioDevice: outBufSamples(%d), %x, %x", p->outBufSamples, (int) p->outputBuffer[0], (int) p->outputBuffer[1]);	
   }
 
   if((p->inBufSamples  =  bufferframes*inchannels) != 0){
@@ -331,6 +335,7 @@ OPENSL_STREAM *android_OpenAudioDevice(int sr, int inchannels, int outchannels, 
       android_CloseAudioDevice(p);
       return NULL; 
     }
+	__android_log_print(ANDROID_LOG_INFO, "OPENSL", "android_OpenAudioDevice: inBufSamples(%d)", p->inBufSamples);	
   }
 
   p->currentInputIndex = 0;
@@ -342,16 +347,19 @@ OPENSL_STREAM *android_OpenAudioDevice(int sr, int inchannels, int outchannels, 
     android_CloseAudioDevice(p);
     return NULL;
   }
-
+//	__android_log_print(ANDROID_LOG_INFO, "OPENSL", "android_OpenAudioDevice: openSLCreateEngine");	
+#if 1
   if(openSLRecOpen(p) != SL_RESULT_SUCCESS) {
-    android_CloseAudioDevice(p);
-    return NULL;
+//    android_CloseAudioDevice(p);
+//    return NULL;
   } 
-
+//	__android_log_print(ANDROID_LOG_INFO, "OPENSL", "android_OpenAudioDevice: openSLRecOpen");	
+#endif
   if(openSLPlayOpen(p) != SL_RESULT_SUCCESS) {
     android_CloseAudioDevice(p);
     return NULL;
   }  
+//	__android_log_print(ANDROID_LOG_INFO, "OPENSL", "android_OpenAudioDevice: openSLPlayOpen");	
 
   notifyThreadLock(p->outlock);
   notifyThreadLock(p->inlock);
@@ -446,6 +454,20 @@ void bqPlayerCallback(SLAndroidSimpleBufferQueueItf bq, void *context)
   notifyThreadLock(p->outlock);
 }
 
+unsigned char *android_GetDeviceBuffer(OPENSL_STREAM *p)
+{
+	p->currentOutputBuffer = (p->currentOutputBuffer ?  0 : 1);	
+	waitThreadLock(p->outlock);
+//	__android_log_print(ANDROID_LOG_INFO, "OPENSL", "android_GetDeviceBuffer: buf[%d]=%x", p->currentOutputBuffer, (int) p->outputBuffer[p->currentOutputBuffer]);		
+	return (unsigned char *)p->outputBuffer[p->currentOutputBuffer];
+}
+
+void android_AudioOut2(OPENSL_STREAM *p)
+{
+	short *outBuffer = p->outputBuffer[p->currentOutputBuffer];
+	int bufsamps = p->outBufSamples;
+	(*p->bqPlayerBufferQueue)->Enqueue(p->bqPlayerBufferQueue, outBuffer, bufsamps*sizeof(short));
+}
 // puts a buffer of size samples to the device
 int android_AudioOut(OPENSL_STREAM *p, float *buffer, int size){
 

@@ -855,7 +855,6 @@ function toolchain(_buildDir, _subDir)
 			"c++_static",
 			"c++abi",
 			"android_support",
-			"unwind",
 			"stdc++",
 			"gcc",
 		}

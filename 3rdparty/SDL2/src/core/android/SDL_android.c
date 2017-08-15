@@ -973,7 +973,7 @@ int Android_JNI_FileOpen(SDL_RWops* ctx,
 		sprintf(str, "%s/%s", SDL_AndroidGetExternalStoragePath(), fileName);
 	else
 		strcpy(str, fileName);
-	__android_log_print(ANDROID_LOG_INFO, "SDL", "file access: %s", str);
+	__android_log_print(ANDROID_LOG_INFO, "MAME", "file access: %s", str);
     fileNameJString = (*mEnv)->NewStringUTF(mEnv, str);
     ctx->hidden.androidio.fileNameRef = (*mEnv)->NewGlobalRef(mEnv, fileNameJString);
     ctx->hidden.androidio.inputStreamRef = NULL;

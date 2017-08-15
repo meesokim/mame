@@ -1416,10 +1416,10 @@ end
 
 	if _OPTIONS["targetos"]=="android" then
 		files {
+			MAME_DIR .. "3rdparty/SDL2/src/audio/android/opensl_io.h",
 			MAME_DIR .. "3rdparty/SDL2/src/audio/android/opensl_io.c",
 			MAME_DIR .. "3rdparty/SDL2/src/audio/android/SDL_androidaudio.h",
 			MAME_DIR .. "3rdparty/SDL2/src/audio/android/SDL_androidaudio.c",
-			MAME_DIR .. "3rdparty/SDL2/src/audio/android/SDL_androidaudio.h",
 			MAME_DIR .. "3rdparty/SDL2/src/core/android/SDL_android.c",
 			MAME_DIR .. "3rdparty/SDL2/src/core/android/SDL_android.h",
 			MAME_DIR .. "3rdparty/SDL2/src/filesystem/android/SDL_sysfilesystem.c",

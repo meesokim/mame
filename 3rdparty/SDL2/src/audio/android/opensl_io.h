@@ -113,6 +113,14 @@ typedef struct opensl_stream {
   Get the current IO block time in seconds
   */
   double android_GetTimestamp(OPENSL_STREAM *p);
+  /*
+  Android SDL interface for playing
+  */
+  void android_AudioOut2(OPENSL_STREAM *p);
+  /*
+  Android SDL interface for getBuffer
+  */
+  unsigned char *android_GetDeviceBuffer(OPENSL_STREAM *p);
   
 #ifdef __cplusplus
 };

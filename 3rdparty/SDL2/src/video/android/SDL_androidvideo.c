@@ -219,7 +219,6 @@ Android_SetScreenResolution(int width, int height, Uint32 format, float rate)
     }
 
     if (Android_Window) {
-        SDL_SendWindowEvent(Android_Window, SDL_WINDOWEVENT_RESIZED, width, height);
 
         /* Force the current mode to match the resize otherwise the SDL_WINDOWEVENT_RESTORED event
          * will fall back to the old mode */
@@ -229,6 +228,11 @@ Android_SetScreenResolution(int width, int height, Uint32 format, float rate)
         display->current_mode.w = width;
         display->current_mode.h = height;
         display->current_mode.refresh_rate = rate;
+		
+		Android_Window->w = width;
+		Android_Window->h = height;
+		//SDL_SendWindowEvent(Android_Window, SDL_WINDOWEVENT_RESIZED, width, height);
+	
     }
 }
 

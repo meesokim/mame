@@ -1269,6 +1269,7 @@ SDL_UpdateFullscreenMode(SDL_Window * window, SDL_bool fullscreen)
                 }
                 display->fullscreen_window = other;
 
+#if 0
                 /* Generate a mode change event here */
                 if (resized) {
                     SDL_SendWindowEvent(other, SDL_WINDOWEVENT_RESIZED,
@@ -1276,7 +1277,7 @@ SDL_UpdateFullscreenMode(SDL_Window * window, SDL_bool fullscreen)
                 } else {
                     SDL_OnWindowResized(other);
                 }
-
+#endif
                 SDL_RestoreMousePosition(other);
 
                 window->last_fullscreen_flags = window->flags;

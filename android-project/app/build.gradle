@@ -27,14 +27,17 @@ model {
                 }   
             }   
         }  		
-
+		
 		buildTypes {
 			release {
+				if(project.hasProperty("MYAPP_RELEASE_STORE_FILE")) {
+					signingConfig signingConfigs.release
+				}
 				minifyEnabled false
-                proguardFiles.add(file('proguard-rules.txt'))
+				proguardFiles.add(file('proguard-rules.txt'))
 			}
 		}
+		
 	}
 }
-
 

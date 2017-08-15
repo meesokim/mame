@@ -266,7 +266,9 @@ public:
 		, m_pio(*this, "ppi8255")
 		, m_sound(*this, "ay8910")
 		, m_palette(*this, "palette")
-		, m_fdc(*this, "upd765")
+		, m_fdc(*this, "fdc")
+		, m_floppy0(*this, "fdc:0")
+		, m_floppy1(*this, "fdc:1")		
 		, m_fd0(nullptr)
 		, m_timer(nullptr)
 		, m_timer_tc(nullptr)
@@ -342,6 +344,8 @@ private:
 	required_device<ay8910_device> m_sound;
 	required_device<palette_device> m_palette;	
 	required_device<upd765a_device> m_fdc;
+	required_device<floppy_connector> m_floppy0;
+	required_device<floppy_connector> m_floppy1;	
 	floppy_image_device *m_fd0;
 	uint8_t *m_font;
 	uint8_t m_priority;
@@ -996,7 +1000,7 @@ void spc1500_state::machine_reset()
 	m_double_mode = false;
 	memset(&m_paltbl[0], 1, 8);
 	m_char_count = 0;
-	m_fd0 = subdevice<floppy_connector>("upd765:1")->get_device();
+	m_fd0 = m_floppy0->get_device();
 	m_fdc->set_floppy(m_fd0);
 	m_fd0->mon_w(false);
 }
@@ -1081,12 +1085,14 @@ static MACHINE_CONFIG_START( spc1500 )
 	MCFG_DEVICE_ADD("cent_status_in", INPUT_BUFFER, 0)
 	
 	// floppy disk controller
-	MCFG_UPD765A_ADD("upd765", true, true)
+	MCFG_UPD765A_ADD("fdc", true, true)
 	//MCFG_UPD765_INTRQ_CALLBACK(INPUTLINE("maincpu", INPUT_LINE_IRQ0))
-
+	
 	// floppy drives
-	MCFG_FLOPPY_DRIVE_ADD("upd765:1", spc1500_floppies, "dd", spc1500_state::floppy_formats)
-	MCFG_FLOPPY_DRIVE_ADD("upd765:2", spc1500_floppies, "dd", spc1500_state::floppy_formats)
+	MCFG_FLOPPY_DRIVE_ADD("fdc:0", spc1500_floppies, "dd", spc1500_state::floppy_formats)
+	MCFG_FLOPPY_DRIVE_ADD("fdc:1", spc1500_floppies, "dd", spc1500_state::floppy_formats)
+	
+	MCFG_SOFTWARE_LIST_ADD("flop_list","spc1500_flop")
 	
 	MCFG_CASSETTE_ADD("cassette")
 	MCFG_CASSETTE_FORMATS(spc1000_cassette_formats)
