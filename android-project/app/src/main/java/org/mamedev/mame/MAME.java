@@ -15,8 +15,9 @@ public class MAME extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		Log.v(TAG, "getExternalFilesDir:" + getExternalFilesDir(null));
+	//	Log.v(TAG, "getExternalFilesDir:" + getExternalFilesDir(null));
 		copyAssetAll("mame.ini");
+		copyAssetAll("ui.ini");
 		copyAssetAll("roms");
     }
 	

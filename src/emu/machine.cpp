@@ -919,8 +919,8 @@ void running_machine::handle_saveload()
 				if (saverr != STATERR_NONE && m_saveload_schedule == saveload_schedule::SAVE)
 					file.remove_on_close();
 			}
-			else
-				popmessage("Error: Failed to open file for %s operation.", opname);
+//			else
+//				popmessage("Error: Failed to open file for %s operation.", opname);
 		}
 	}
 
