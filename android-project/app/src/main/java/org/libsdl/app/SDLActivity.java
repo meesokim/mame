@@ -300,6 +300,11 @@ public class SDLActivity extends Activity {
         // Reset everything in case the user re opens the app
         SDLActivity.initialize();
     }
+	
+    @Override
+    public void onBackPressed() {
+        super.onBackPressed();
+    }		
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
@@ -1323,7 +1328,6 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         return false;
     }
-	
 
     // Touch events
     @Override
