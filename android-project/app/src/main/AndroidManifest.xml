@@ -36,6 +36,12 @@
 				  android:screenOrientation="landscape"
                   android:configChanges="keyboardHidden|orientation|screenSize"
                   >
+		<meta-data
+            android:name="com.samsung.android.sdk.multiwindow.dex.launchwidth"
+            android:value="0" />
+        <meta-data
+            android:name="com.samsung.android.sdk.multiwindow.dex.launchheight"
+            android:value="0" />				  
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

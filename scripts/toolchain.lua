@@ -856,6 +856,7 @@ function toolchain(_buildDir, _subDir)
 			"c++abi",
 			"android_support",
 			"stdc++",
+			"unwind",
 			"gcc",
 		}
 		buildoptions {
