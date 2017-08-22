@@ -31,6 +31,7 @@ import android.hardware.*;
 import android.content.pm.ActivityInfo;
 import java.io.*;
 import android.content.res.AssetManager;
+import android.content.res.Configuration;
 
 /**
     SDL Activity
@@ -117,28 +118,6 @@ public class SDLActivity extends Activity {
         mHasFocus = true;
     }
 	
-/*	
-	@Override
-	public void onConfigurationChanged(Configuration newConfig) {
-		super.onConfigurationChanged(newConfig);
-	 
-		if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) // 세로 전환시
-		{ 
-			setContentView(R.id.port_activity);
-			mWidth = findViewById(R.id.scrollview).getWidth();
-			mheight = findViewById(R.id.scrollview).getHeigth();
-			onNativeResize(mWidth, mHeight, mSdlFormat, mDisplay.getRefreshRate());
-		} 
-		else if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE)// 가로 전환시
-		{ 
-			setContentView(R.id.land_activity);
-			mWidth = findViewById(R.id.scrollview).getWidth();
-			mheight = findViewById(R.id.scrollview).getHeigth();
-			onNativeResize(mWidth, mHeight, mSdlFormat, mDisplay.getRefreshRate());
-		}
-	}
-*/
-
     // Setup
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -146,7 +125,7 @@ public class SDLActivity extends Activity {
         Log.v(TAG, "Model: " + android.os.Build.MODEL);
         Log.v(TAG, "onCreate(): " + mSingleton);
         super.onCreate(savedInstanceState);
-
+		
         SDLActivity.initialize();
         // So we can call stuff from static callbacks
         mSingleton = this;
@@ -213,7 +192,14 @@ public class SDLActivity extends Activity {
             }
         }
 		
-
+		View decorView = getWindow().getDecorView();
+		// Hide both the navigation bar and the status bar.
+		// SYSTEM_UI_FLAG_FULLSCREEN is only available on Android 4.1 and higher, but as
+		// a general rule, you should design your app to hide the status bar whenever you
+		// hide the navigation bar.
+		int uiOptions = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+					  | View.SYSTEM_UI_FLAG_FULLSCREEN;
+		decorView.setSystemUiVisibility(uiOptions);
     }
 
     // Events
@@ -250,6 +236,29 @@ public class SDLActivity extends Activity {
         if (SDLActivity.mBrokenLibraries) {
            return;
         }
+
+		try {
+			//Method method = this.getClass().getMethod("exitFreeformMode", null);
+            //ethod.invoke(this, null);
+			Activity am = this;
+            Method method;
+            try {
+                method = am.getClass().getMethod("exitFreeformMode", null);
+                method.invoke(am, null);
+            } catch (NoSuchMethodException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            } catch (IllegalAccessException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            } catch (IllegalArgumentException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+			}
+
+		} catch (Exception e){
+			
+		}
 
         SDLActivity.mHasFocus = hasFocus;
         if (hasFocus) {
@@ -1076,7 +1085,6 @@ class SDLMain implements Runnable {
 /**
     SDLSurface. This is what we draw on, so we need to know when it's created
     in order to do anything useful.
-
     Because of this, that's where we set up the SDL thread
 */
 class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
@@ -1128,6 +1136,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     }
 
     public Surface getNativeSurface() {
+		Log.v("SDL", "getNativeSurface()");
         return getHolder().getSurface();
     }
 
@@ -1147,7 +1156,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         SDLActivity.mIsSurfaceReady = false;
         SDLActivity.onNativeSurfaceDestroyed();
     }
-
+	
     // Called when the surface is resized
     @Override
     public void surfaceChanged(SurfaceHolder holder,
@@ -1241,7 +1250,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         // Set mIsSurfaceReady to 'true' *before* making a call to handleResume
         SDLActivity.mIsSurfaceReady = true;
-        //SDLActivity.onNativeSurfaceChanged();
+        SDLActivity.onNativeSurfaceChanged();
 
 
         if (SDLActivity.mSDLThread == null) {
@@ -1503,8 +1512,7 @@ class DummyEdit extends View implements View.OnKeyListener {
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
             SDLActivity.onNativeKeyUp(keyCode);
             return true;
-        }
-
+		}
         return false;
     }
 
