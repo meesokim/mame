@@ -14,14 +14,16 @@ import android.content.res.Configuration;
 */
 public class MAME extends SDLActivity {
     private static final String TAG = "MAME";
+	public static final int SDL_MOUSE_LEFT = 0;
+	public static final int SDL_MOUSE_RIGHT = 1;
     // Setup
     @Override
     protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-	//	Log.v(TAG, "getExternalFilesDir:" + getExternalFilesDir(null));
 		copyAssetAll("mame.ini");
 		copyAssetAll("ui.ini");
 		copyAssetAll("roms");
+		copyAssetAll("uismall.bdf");
     }
 	
 	public void copyAssetAll(String srcPath) {
@@ -81,5 +83,5 @@ public class MAME extends SDLActivity {
 			android.os.Process.killProcess(android.os.Process.myPid());
         }
         return super.dispatchKeyEvent(event);
-    }	
-}
+    }
+	}
