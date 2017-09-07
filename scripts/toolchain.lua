@@ -898,6 +898,9 @@ function toolchain(_buildDir, _subDir)
 				"-mfpu=vfpv3-d16",
 				"-mthumb",
 			}
+			links {
+				"unwind",
+			}
 			linkoptions {
 				"-gcc-toolchain $(ANDROID_NDK_ARM)",
 				"--sysroot=$(ANDROID_NDK_ROOT)/platforms/" .. androidPlatform .. "/arch-arm",

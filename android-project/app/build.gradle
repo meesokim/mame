@@ -1,23 +1,58 @@
+import org.apache.tools.ant.taskdefs.condition.Os
 apply plugin: 'com.android.application'
 
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+buildscript {
+    repositories {
+        //jcenter()
+	//mavenCentral()
+	jcenter {
+	   url "http://jcenter.bintray.com"
+	}
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:1.2.3'
+    }
+}
+
+allprojects {
+    repositories {
+	jcenter()
+    }
+
+}
 android {
     compileSdkVersion 21
-    buildToolsVersion "21.1.2"
-
+    buildToolsVersion "25.0.1"
+	ext.gameTitle = "."
+	
+    if ( project.hasProperty("game") ) {
+        ext.gameTitle = game
+    }	
+   
     defaultConfig {
-        applicationId "org.mamedev.mame"
+        applicationId "com.mame."+android.gameTitle
         minSdkVersion 21
         targetSdkVersion 21
-
+		if (android.gameTitle != ".") {
+			setProperty("archivesBaseName", android.gameTitle)
+		}
         ndk {
             moduleName 'main'
         }
 
     }
 
+    lintOptions {
+		abortOnError false
+    }
+
     sourceSets.main {
-        jni.srcDirs = []
-        jniLibs.srcDir 'src/main/libs'
+		manifest.srcFile android.gameTitle+'/AndroidManifest.xml'
+		jniLibs.srcDirs =['src/main/libs']
+		java.srcDirs = [android.gameTitle+'/src', 'src_sdl']
+		res.srcDirs = [android.gameTitle+'/res']
+		assets.srcDirs = [android.gameTitle+'/assets']
     }
 
     buildTypes {
