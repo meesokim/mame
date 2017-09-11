@@ -30,10 +30,15 @@ android {
     compileSdkVersion 21
     buildToolsVersion "25.0.1"
 	ext.gameTitle = "."
+	ext.machine = ""
 	
     if ( project.hasProperty("game") ) {
         ext.gameTitle = game
-    }	
+    }
+
+	if ( project.hasProperty("machine")) {
+		ext.machine = machine
+	}
    
     defaultConfig {
         applicationId "com.mame."+android.gameTitle
@@ -54,7 +59,7 @@ android {
 
     sourceSets.main {
 		manifest.srcFile android.gameTitle+'/AndroidManifest.xml'
-		jniLibs.srcDirs =['src/main/libs']
+		jniLibs.srcDirs =['src/main/libs' + android.machine ]
 		java.srcDirs = [android.gameTitle+'/src', 'src_sdl']
 		res.srcDirs = [android.gameTitle+'/res']
 		assets.srcDirs = [android.gameTitle+'/assets']
