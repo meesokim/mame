@@ -17,8 +17,13 @@ buildscript {
 
 allprojects {
     repositories {
-	jcenter()
-    }
+		jcenter {
+			url "http://jcenter.bintray.com"
+		}
+        maven {
+            url "http://maven.google.com"
+        }		
+	}
 
 }
 android {
@@ -57,8 +62,12 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled false			
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
     }
+	dependencies {
+		compile 'com.android.support:support-v4:22.0.0'
+		compile 'com.android.support:appcompat-v7:22.0.0'
+	}	
 }
