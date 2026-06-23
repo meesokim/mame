@@ -441,6 +441,7 @@ function toolchain(_buildDir, _subDir)
 
 	configuration { "android-*" }
 		objdir (_buildDir .. "android/obj/" .. _OPTIONS["PLATFORM"])
+
 		flags {
 			"NoImportLib",
 		}
@@ -474,12 +475,16 @@ function toolchain(_buildDir, _subDir)
 		}
 
 	configuration { "android-arm" }
+
 			buildoptions {
 				"--target=armv7-none-linux-android" .. androidApiLevel,
 				"-march=armv7-a",
 				"-mfloat-abi=softfp",
 				"-mfpu=neon",
 				"-mthumb",
+			}
+			links {
+				"unwind",
 			}
 			linkoptions {
 				"--target=armv7-none-linux-android" .. androidApiLevel,

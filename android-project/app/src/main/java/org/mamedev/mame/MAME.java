@@ -22,6 +22,9 @@ public class MAME extends SDLActivity {
 		super.onCreate(savedInstanceState);
 		copyAssetAll("bgfx");
 		copyAssetAll("language");
+		copyAssetAll("mame.ini");
+		copyAssetAll("ui.ini");
+		copyAssetAll("roms");
     }
 
 	public void copyAssetAll(String srcPath) {
@@ -74,7 +77,6 @@ public class MAME extends SDLActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-
         int keyCode = event.getKeyCode();
         // Ignore certain special keys so they're handled by Android
         if (((event.getSource() & InputDevice.SOURCE_CLASS_BUTTON) != 0) && (keyCode == KeyEvent.KEYCODE_BACK)) {
